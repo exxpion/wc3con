@@ -1,83 +1,172 @@
 import * as net from 'net';
 
+/**
+ * TCP-прокси гостя.
+ *
+ * Слушает СВОЙ порт (не 6112!) на 127.0.0.1. Именно этот порт коннектор
+ * прописывает в GAMEINFO, поэтому Warcraft III гостя подключается сюда.
+ * Каждое TCP-подключение получает числовой id, чтобы хост мог отличать игроков.
+ */
 export interface TCPProxyOptions {
-  localPort: number;
-  onConnection: (socket: net.Socket) => void;
-  onData: (socket: net.Socket, data: Buffer) => void;
-  onClose: (socket: net.Socket) => void;
+  onOpen: (connId: number) => void;
+  onData: (connId: number, data: Buffer) => void;
+  onClose: (connId: number) => void;
 }
 
 export class TCPProxy {
   private server: net.Server | null = null;
-  private connections: Set<net.Socket> = new Set();
+  private sockets = new Map<number, net.Socket>();
+  private nextId = 1;
+  private _port = 0;
 
   constructor(private options: TCPProxyOptions) {}
 
-  start(): Promise<void> {
+  get port(): number {
+    return this._port;
+  }
+
+  /** Запуститься на свободном порту, выбранном системой. Возвращает порт. */
+  start(): Promise<number> {
     return new Promise((resolve, reject) => {
-      if (this.server) {
-        console.log('TCP proxy already running');
-        return resolve();
-      }
+      if (this.server) return resolve(this._port);
 
-      this.server = net.createServer((socket) => {
-        console.log(`New TCP connection from ${socket.remoteAddress}:${socket.remotePort}`);
-        
-        this.connections.add(socket);
-        this.options.onConnection(socket);
+      const server = net.createServer((socket) => {
+        const connId = this.nextId++;
+        this.sockets.set(connId, socket);
+        socket.setNoDelay(true);
+        console.log(`WC3 connected to proxy (conn ${connId})`);
+        this.options.onOpen(connId);
 
-        socket.on('data', (data) => {
-          this.options.onData(socket, data);
-        });
+        socket.on('data', (data) => this.options.onData(connId, data));
 
         socket.on('close', () => {
-          console.log(`TCP connection closed from ${socket.remoteAddress}:${socket.remotePort}`);
-          this.connections.delete(socket);
-          this.options.onClose(socket);
+          if (this.sockets.delete(connId)) {
+            console.log(`WC3 proxy connection closed (conn ${connId})`);
+            this.options.onClose(connId);
+          }
         });
 
         socket.on('error', (err) => {
-          console.error('TCP socket error:', err);
-          this.connections.delete(socket);
+          console.error(`Proxy socket error (conn ${connId}):`, err.message);
+          socket.destroy();
         });
       });
 
-      this.server.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
-          console.error(`Port ${this.options.localPort} is already in use. Please close WC3 or any other application using this port.`);
-          reject(new Error(`Port ${this.options.localPort} is already in use`));
-        } else {
-          console.error('TCP server error:', err);
-          reject(err);
-        }
-      });
-
-      this.server.listen(this.options.localPort, '0.0.0.0', () => {
-        console.log(`TCP proxy listening on 0.0.0.0:${this.options.localPort}`);
-        resolve();
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        server.removeListener('error', reject);
+        server.on('error', (err) => console.error('TCP proxy error:', err));
+        this.server = server;
+        this._port = (server.address() as net.AddressInfo).port;
+        console.log(`TCP proxy listening on 127.0.0.1:${this._port}`);
+        resolve(this._port);
       });
     });
   }
 
-  stop(): void {
-    this.connections.forEach(socket => socket.destroy());
-    this.connections.clear();
+  write(connId: number, data: Buffer): void {
+    const s = this.sockets.get(connId);
+    if (s && s.writable) s.write(data);
+  }
 
+  /** Закрыть соединение по просьбе хоста (без обратного уведомления) */
+  close(connId: number): void {
+    const s = this.sockets.get(connId);
+    if (s) {
+      this.sockets.delete(connId);
+      s.destroy();
+    }
+  }
+
+  closeAll(): void {
+    this.sockets.forEach((s) => s.destroy());
+    this.sockets.clear();
+  }
+
+  stop(): void {
+    this.closeAll();
     if (this.server) {
       this.server.close();
       this.server = null;
     }
-
+    this._port = 0;
     console.log('TCP proxy stopped');
   }
+}
 
-  send(socket: net.Socket, data: Buffer): void {
-    if (socket.writable) {
-      socket.write(data);
+/**
+ * Туннели хоста.
+ *
+ * Когда гость подключается к своему прокси, хост получает «open» и открывает
+ * обычное TCP-соединение к СВОЕМУ Warcraft III (127.0.0.1:6112) — для WC3
+ * хоста это выглядит как обычный игрок из локальной сети.
+ */
+export interface HostTunnelOptions {
+  wc3Port: number;
+  /** данные от WC3 хоста к конкретному гостю */
+  onData: (userId: number, connId: number, data: Buffer) => void;
+  /** WC3 хоста закрыл соединение */
+  onClose: (userId: number, connId: number) => void;
+}
+
+export class HostTunnel {
+  private sockets = new Map<string, net.Socket>();
+
+  constructor(private options: HostTunnelOptions) {}
+
+  private key(userId: number, connId: number): string {
+    return `${userId}:${connId}`;
+  }
+
+  open(userId: number, connId: number): void {
+    const key = this.key(userId, connId);
+    this.close(userId, connId);
+
+    const socket = net.connect({ host: '127.0.0.1', port: this.options.wc3Port });
+    socket.setNoDelay(true);
+    this.sockets.set(key, socket);
+
+    socket.on('connect', () => console.log(`Host tunnel ${key} -> WC3 :${this.options.wc3Port}`));
+    socket.on('data', (data) => this.options.onData(userId, connId, data));
+    socket.on('close', () => {
+      if (this.sockets.get(key) === socket) {
+        this.sockets.delete(key);
+        this.options.onClose(userId, connId);
+      }
+    });
+    socket.on('error', (err) => {
+      console.error(`Host tunnel ${key} error:`, err.message);
+      socket.destroy();
+    });
+  }
+
+  write(userId: number, connId: number, data: Buffer): void {
+    const s = this.sockets.get(this.key(userId, connId));
+    // запись до установки соединения Node буферизует сама
+    if (s && !s.destroyed) s.write(data);
+  }
+
+  close(userId: number, connId: number): void {
+    const key = this.key(userId, connId);
+    const s = this.sockets.get(key);
+    if (s) {
+      this.sockets.delete(key);
+      s.destroy();
     }
   }
 
-  getConnectionCount(): number {
-    return this.connections.size;
+  closeAllForUser(userId: number): void {
+    const prefix = `${userId}:`;
+    for (const [key, s] of this.sockets) {
+      if (key.startsWith(prefix)) {
+        this.sockets.delete(key);
+        s.destroy();
+      }
+    }
+  }
+
+  closeAll(): void {
+    this.sockets.forEach((s) => s.destroy());
+    this.sockets.clear();
   }
 }

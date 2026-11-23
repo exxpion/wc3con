@@ -5,6 +5,9 @@ import { GameRoom, ConnectedClient } from '../types/index.js';
 export const rooms = new Map<string, GameRoom>();
 export const clients = new Map<number, ConnectedClient>();
 
+// GAMEINFO (base64) настоящей игры WC3 хоста, по id комнаты
+export const roomGameInfo = new Map<string, string>();
+
 export function generateRoomId(): string {
   return randomBytes(8).toString('hex');
 }
@@ -51,6 +54,7 @@ export function leaveRoom(roomId: string, userId: number): void {
   // If host leaves or no players left, delete room
   if (room.host_user_id === userId || room.current_players === 0) {
     rooms.delete(roomId);
+    roomGameInfo.delete(roomId);
   }
 }
 

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { User } from '../types/index.js';
 
-const db = new Database('wc3connector.db');
+export const db: Database.Database = new Database('wc3connector.db');
 
 // Initialize database schema
 db.exec(`
@@ -37,5 +37,3 @@ export const dbCreateUser = (username: string, passwordHash: string): User => {
     created_at: Date.now(),
   };
 };
-
-export { db };

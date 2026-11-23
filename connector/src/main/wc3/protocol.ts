@@ -1,87 +1,104 @@
 /**
- * W3GS (Warcraft 3 Game Sockets) Protocol implementation for WC3 1.26-1.29
- * 
- * All packets start with: [0xF7][type][length_uint16_le][data]
+ * W3GS (Warcraft III Game Sockets) — минимальная реализация для WC3 1.26
+ *
+ * Все пакеты: [0xF7][тип][длина uint16 LE][данные]
+ *
+ * Коннектор НЕ строит GAMEINFO сам: он берёт настоящий пакет, который отдаёт
+ * хостящая игра Warcraft III в ответ на SEARCHGAME, и только подменяет в нём порт.
  */
 
-export const W3GS_HEADER = 0xF7;
+export const W3GS_HEADER = 0xf7;
 
-// Packet types
-export enum W3GSPacketType {
-  SEARCHGAME = 0x2F,      // Client broadcasts to search for games
-  GAMEINFO = 0x30,        // Host responds with game info
-  CREATEGAME = 0x31,      // Create game
-  REFRESHGAME = 0x32,     // Refresh/update game
-  DECREATEGAME = 0x33,    // Remove game
+export const W3GS_SEARCHGAME = 0x2f;
+export const W3GS_GAMEINFO = 0x30;
+export const W3GS_CREATEGAME = 0x31;
+
+/** Версия клиента: 26 = патч 1.26 */
+export const WC3_VERSION = 26;
+
+/** Продукт «The Frozen Throne» (в пакете записывается как "PX3W") */
+const PRODUCT_TFT = Buffer.from('PX3W', 'ascii');
+
+/** Пакет W3GS_SEARCHGAME: «есть ли тут игры?» */
+export function buildSearchGame(version: number = WC3_VERSION): Buffer {
+  const buf = Buffer.alloc(16);
+  buf.writeUInt8(W3GS_HEADER, 0);
+  buf.writeUInt8(W3GS_SEARCHGAME, 1);
+  buf.writeUInt16LE(16, 2);
+  PRODUCT_TFT.copy(buf, 4);
+  buf.writeUInt32LE(version, 8);
+  buf.writeUInt32LE(0, 12);
+  return buf;
 }
 
-export interface GameInfo {
-  gameId: number;
-  name: string;
-  map: string;
-  slots: number;
-  slotsUsed: number;
-  gameType: number;       // 0x00 = custom, 0x01 = ladder, etc.
-  gameState: number;      // 0x00 = private, 0x01 = public
+/** Пакет W3GS_CREATEGAME: «в сети появилась игра» (отправляется один раз перед GAMEINFO) */
+export function buildCreateGame(version: number = WC3_VERSION, hostCounter = 1): Buffer {
+  const buf = Buffer.alloc(16);
+  buf.writeUInt8(W3GS_HEADER, 0);
+  buf.writeUInt8(W3GS_CREATEGAME, 1);
+  buf.writeUInt16LE(16, 2);
+  PRODUCT_TFT.copy(buf, 4);
+  buf.writeUInt32LE(version, 8);
+  buf.writeUInt32LE(hostCounter, 12);
+  return buf;
 }
 
-/**
- * Build W3GS_GAMEINFO packet for UDP broadcast
- */
-export function buildGameInfoPacket(game: GameInfo): Buffer {
-  const nameBytes = Buffer.from(game.name, 'utf8');
-  const mapBytes = Buffer.from(game.map, 'utf8');
-  
-  // Calculate packet length
-  const length = 4 + 4 + 1 + nameBytes.length + 1 + mapBytes.length + 1 + 4 + 4 + 4 + 4;
-  
-  const buffer = Buffer.alloc(length);
-  let offset = 0;
-  
-  // Header
-  buffer.writeUInt8(W3GS_HEADER, offset); offset += 1;
-  buffer.writeUInt8(W3GSPacketType.GAMEINFO, offset); offset += 1;
-  buffer.writeUInt16LE(length, offset); offset += 2;
-  
-  // Game ID
-  buffer.writeUInt32LE(game.gameId, offset); offset += 4;
-  
-  // Game type
-  buffer.writeUInt8(game.gameType, offset); offset += 1;
-  
-  // Game name (null-terminated string)
-  nameBytes.copy(buffer, offset);
-  offset += nameBytes.length;
-  buffer.writeUInt8(0, offset); offset += 1;
-  
-  // Map name (null-terminated string)
-  mapBytes.copy(buffer, offset);
-  offset += mapBytes.length;
-  buffer.writeUInt8(0, offset); offset += 1;
-  
-  // Slots total
-  buffer.writeUInt32LE(game.slots, offset); offset += 4;
-  
-  // Slots used
-  buffer.writeUInt32LE(game.slotsUsed, offset); offset += 4;
-  
-  // Game state
-  buffer.writeUInt32LE(game.gameState, offset); offset += 4;
-  
-  // Port (always 6112)
-  buffer.writeUInt32LE(6112, offset); offset += 4;
-  
-  return buffer;
+export interface ParsedGameInfo {
+  version: number;
+  hostCounter: number;
+  gameName: string;
+  slotsTotal: number;
+  slotsOpen: number;
+  port: number;
 }
 
 /**
- * Parse W3GS_SEARCHGAME packet (client is looking for games)
+ * Разбор W3GS_GAMEINFO.
+ *
+ * Раскладка:
+ *  F7 30 len(2) | product(4) | version(4) | hostCounter(4) | entryKey(4) |
+ *  gameName\0 | password\0 | statString\0 |
+ *  slotsTotal(4) | gameType(4) | unknown(4) | slotsOpen(4) | upTime(4) | port(2)
+ *
+ * Возвращает null, если пакет не похож на GAMEINFO.
  */
-export function parseSearchGamePacket(data: Buffer): boolean {
-  if (data.length < 4) return false;
-  
-  const header = data.readUInt8(0);
-  const type = data.readUInt8(1);
-  
-  return header === W3GS_HEADER && type === W3GSPacketType.SEARCHGAME;
+export function parseGameInfo(data: Buffer): ParsedGameInfo | null {
+  if (data.length < 4 + 16 + 3 + 22) return null;
+  if (data.readUInt8(0) !== W3GS_HEADER || data.readUInt8(1) !== W3GS_GAMEINFO) return null;
+  if (data.readUInt16LE(2) !== data.length) return null;
+
+  const version = data.readUInt32LE(8);
+  const hostCounter = data.readUInt32LE(12);
+
+  let offset = 20;
+  const nameEnd = data.indexOf(0, offset);
+  if (nameEnd < 0) return null;
+  const gameName = data.toString('utf8', offset, nameEnd);
+  offset = nameEnd + 1;
+
+  const passEnd = data.indexOf(0, offset); // пароль (обычно пустой)
+  if (passEnd < 0) return null;
+  offset = passEnd + 1;
+
+  const statEnd = data.indexOf(0, offset); // stat string (закодирован без нулевых байт)
+  if (statEnd < 0) return null;
+  offset = statEnd + 1;
+
+  if (data.length - offset !== 22) return null;
+
+  return {
+    version,
+    hostCounter,
+    gameName,
+    slotsTotal: data.readUInt32LE(offset),
+    slotsOpen: data.readUInt32LE(offset + 12),
+    port: data.readUInt16LE(data.length - 2),
+  };
+}
+
+/** Копия GAMEINFO с другим TCP-портом (последние 2 байта пакета) */
+export function rewriteGameInfoPort(data: Buffer, port: number): Buffer {
+  const copy = Buffer.from(data);
+  copy.writeUInt16LE(port, copy.length - 2);
+  return copy;
 }

@@ -14,7 +14,12 @@ import {
   getRoomList,
   getClientsInRoom,
   clients,
+  rooms,
+  roomGameInfo,
 } from '../game/rooms.js';
+
+// Защита от мусора: один кусок туннельного трафика не больше ~512 КБ (base64)
+const MAX_TUNNEL_CHUNK = 700_000;
 
 export function setupWebSocketServer(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true });
@@ -45,14 +50,52 @@ export function setupWebSocketServer(app: FastifyInstance) {
 
     ws.on('close', () => {
       if (client) {
-        if (client.room_id) {
-          leaveRoom(client.room_id, client.user_id);
-          broadcastRoomList();
+        removeFromRoom(client);
+        // Не удаляем запись, если за это время тот же пользователь уже вошёл с другого соединения
+        if (clients.get(client.user_id) === client) {
+          clients.delete(client.user_id);
         }
-        clients.delete(client.user_id);
       }
     });
   });
+
+  /** Убрать клиента из его комнаты и корректно уведомить остальных */
+  function removeFromRoom(client: ConnectedClient) {
+    const roomId = client.room_id;
+    if (!roomId) return;
+
+    const room = rooms.get(roomId);
+    const wasHost = !!room && room.host_user_id === client.user_id;
+    const others = getClientsInRoom(roomId).filter((c) => c.user_id !== client.user_id);
+
+    leaveRoom(roomId, client.user_id);
+    client.room_id = undefined;
+    client.is_host = false;
+
+    if (wasHost) {
+      // Хост ушёл — комната удалена, гостей выводим
+      others.forEach((c) => {
+        c.room_id = undefined;
+        c.is_host = false;
+        send(c.ws, { type: WSMessageType.ROOM_CLOSED, payload: { roomId } });
+      });
+    } else if (room) {
+      // Гость ушёл — хост должен закрыть все его туннели к своему WC3
+      const host = clients.get(room.host_user_id);
+      if (host && host.room_id === roomId) {
+        send(host.ws, {
+          type: WSMessageType.TUNNEL,
+          payload: { from: client.user_id, conn: 0, op: 'close_all' },
+        });
+      }
+      notifyRoomClients(roomId, {
+        type: WSMessageType.ROOM_UPDATE,
+        payload: { action: 'player_left', username: client.username },
+      });
+    }
+
+    broadcastRoomList();
+  }
 
   async function handleMessage(
     ws: WebSocket,
@@ -89,6 +132,7 @@ export function setupWebSocketServer(app: FastifyInstance) {
 
       case WSMessageType.CREATE_ROOM: {
         if (!client) return;
+        if (client.room_id) removeFromRoom(client);
         const { name, map, maxPlayers } = payload;
         const room = createRoom(name, map, client.user_id, maxPlayers);
         client.room_id = room.id;
@@ -100,13 +144,18 @@ export function setupWebSocketServer(app: FastifyInstance) {
 
       case WSMessageType.JOIN_ROOM: {
         if (!client) return;
+        if (client.room_id) removeFromRoom(client);
         const { roomId } = payload;
         const room = joinRoom(roomId);
         if (!room) {
           return sendError(ws, 'Room not found or full');
         }
         client.room_id = roomId;
-        send(ws, { type: WSMessageType.ROOM_JOINED, payload: room });
+        // вместе с комнатой отдаём GAMEINFO игры хоста (если хост уже создал игру в WC3)
+        send(ws, {
+          type: WSMessageType.ROOM_JOINED,
+          payload: { ...room, game_info: roomGameInfo.get(roomId) },
+        });
         broadcastRoomList();
         notifyRoomClients(roomId, {
           type: WSMessageType.ROOM_UPDATE,
@@ -117,15 +166,7 @@ export function setupWebSocketServer(app: FastifyInstance) {
 
       case WSMessageType.LEAVE_ROOM: {
         if (!client || !client.room_id) return;
-        const roomId = client.room_id;
-        leaveRoom(roomId, client.user_id);
-        client.room_id = undefined;
-        client.is_host = false;
-        broadcastRoomList();
-        notifyRoomClients(roomId, {
-          type: WSMessageType.ROOM_UPDATE,
-          payload: { action: 'player_left', username: client.username },
-        });
+        removeFromRoom(client);
         break;
       }
 
@@ -135,18 +176,43 @@ export function setupWebSocketServer(app: FastifyInstance) {
         break;
       }
 
-      case WSMessageType.GAME_DATA: {
-        if (!client || !client.room_id) return;
-        // Relay game data to all other clients in the room
-        const roomClients = getClientsInRoom(client.room_id);
-        roomClients.forEach((c) => {
+      // Хост присылает GAMEINFO своей игры WC3 -> запоминаем и рассылаем гостям
+      case WSMessageType.ROOM_GAMEINFO: {
+        if (!client || !client.room_id || !client.is_host) return;
+        if (typeof payload?.data !== 'string' || payload.data.length > 4096) return;
+        roomGameInfo.set(client.room_id, payload.data);
+        getClientsInRoom(client.room_id).forEach((c) => {
           if (c.user_id !== client.user_id) {
-            send(c.ws, {
-              type: WSMessageType.GAME_DATA,
-              payload: { from: client.username, data: payload.data },
-            });
+            send(c.ws, { type: WSMessageType.ROOM_GAMEINFO, payload: { data: payload.data } });
           }
         });
+        break;
+      }
+
+      // TCP-туннель: гость -> хост (to не нужен) и хост -> конкретный гость (to = user_id гостя)
+      case WSMessageType.TUNNEL: {
+        if (!client || !client.room_id) return;
+        if (!payload || typeof payload.conn !== 'number') return;
+        if (typeof payload.data === 'string' && payload.data.length > MAX_TUNNEL_CHUNK) return;
+
+        const room = rooms.get(client.room_id);
+        if (!room) return;
+
+        if (client.is_host) {
+          const target = typeof payload.to === 'number' ? clients.get(payload.to) : undefined;
+          if (!target || target.room_id !== client.room_id) return;
+          send(target.ws, {
+            type: WSMessageType.TUNNEL,
+            payload: { conn: payload.conn, op: payload.op, data: payload.data },
+          });
+        } else {
+          const host = clients.get(room.host_user_id);
+          if (!host || host.room_id !== client.room_id) return;
+          send(host.ws, {
+            type: WSMessageType.TUNNEL,
+            payload: { from: client.user_id, conn: payload.conn, op: payload.op, data: payload.data },
+          });
+        }
         break;
       }
 

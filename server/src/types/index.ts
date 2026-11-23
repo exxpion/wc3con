@@ -52,6 +52,9 @@ export enum WSMessageType {
   
   // Game traffic relay
   GAME_DATA = 'game_data',
+  ROOM_GAMEINFO = 'room_gameinfo', // хост -> сервер -> гости: GAMEINFO игры WC3 (base64)
+  ROOM_CLOSED = 'room_closed',     // сервер -> гости: хост закрыл комнату
+  TUNNEL = 'tunnel',               // TCP-туннель гость <-> хост (open/data/close по id соединения)
   
   // Errors
   ERROR = 'error',

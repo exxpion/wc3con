@@ -1,5 +1,16 @@
 import { WebSocket } from 'ws';
-import * as net from 'net';
+
+export type TunnelOp = 'open' | 'data' | 'close' | 'close_all';
+
+export interface TunnelMessage {
+  /** от кого (сервер заполняет для сообщений, идущих к хосту) */
+  from?: number;
+  /** кому (заполняет хост для сообщений, идущих к гостю) */
+  to?: number;
+  conn: number;
+  op: TunnelOp;
+  data?: Buffer;
+}
 
 export interface WSClientOptions {
   serverUrl: string;
@@ -7,9 +18,13 @@ export interface WSClientOptions {
   onConnected: () => void;
   onDisconnected: () => void;
   onRoomCreated: (roomId: string, room: any) => void;
-  onRoomJoined: (roomId: string, room: any) => void;
+  onRoomJoined: (roomId: string, room: any, gameInfo: Buffer | null) => void;
+  onRoomClosed: () => void;
   onRoomList: (rooms: any[]) => void;
-  onGameData: (data: Buffer) => void;
+  /** хост прислал свежий GAMEINFO своей игры (для гостей) */
+  onGameInfo: (gameInfo: Buffer) => void;
+  /** туннельный трафик: гость -> хост (есть from) или хост -> гость */
+  onTunnel: (msg: TunnelMessage) => void;
   onError: (error: string) => void;
 }
 
@@ -17,8 +32,8 @@ export class WSRelayClient {
   private ws: WebSocket | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private isConnecting = false;
+  private stopped = false;
   private currentRoomId: string | null = null;
-  private socketToRoom = new Map<net.Socket, string>();
 
   constructor(private options: WSClientOptions) {}
 
@@ -27,35 +42,38 @@ export class WSRelayClient {
 
     this.isConnecting = true;
     console.log(`Connecting to ${this.options.serverUrl}...`);
-    this.ws = new WebSocket(this.options.serverUrl);
+    const ws = new WebSocket(this.options.serverUrl);
+    this.ws = ws;
 
-    this.ws.on('open', () => {
+    ws.on('open', () => {
       this.isConnecting = false;
       this.send({ type: 'auth', payload: { token: this.options.token } });
     });
 
-    this.ws.on('message', (data: Buffer) => {
+    ws.on('message', (data: Buffer) => {
       try {
         this.handleMessage(JSON.parse(data.toString()));
       } catch (err) {
-        console.error('Failed to parse message:', err);
+        console.error('Failed to handle message:', err);
       }
     });
 
-    this.ws.on('close', () => {
+    ws.on('close', () => {
       this.isConnecting = false;
-      this.ws = null;
+      if (this.ws === ws) this.ws = null;
+      this.currentRoomId = null;
       this.options.onDisconnected();
       this.scheduleReconnect();
     });
 
-    this.ws.on('error', (err) => {
+    ws.on('error', (err) => {
       console.error('WebSocket error:', err);
       this.isConnecting = false;
     });
   }
 
   disconnect(): void {
+    this.stopped = true;
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -63,7 +81,6 @@ export class WSRelayClient {
     this.ws?.close();
     this.ws = null;
     this.currentRoomId = null;
-    this.socketToRoom.clear();
   }
 
   createRoom(name: string, map: string, maxPlayers = 12): void {
@@ -85,17 +102,22 @@ export class WSRelayClient {
     this.send({ type: 'room_list' });
   }
 
-  sendGameData(data: Buffer, _socket: net.Socket): void {
-    if (!this.currentRoomId) return;
-    this.send({ type: 'game_data', payload: { data: data.toString('base64') } });
+  /** Хост: отправить GAMEINFO своей игры */
+  sendGameInfo(packet: Buffer): void {
+    this.send({ type: 'room_gameinfo', payload: { data: packet.toString('base64') } });
   }
 
-  registerSocket(socket: net.Socket, roomId: string): void {
-    this.socketToRoom.set(socket, roomId);
-  }
-
-  unregisterSocket(socket: net.Socket): void {
-    this.socketToRoom.delete(socket);
+  /** Отправить кусок туннельного трафика */
+  sendTunnel(msg: TunnelMessage): void {
+    this.send({
+      type: 'tunnel',
+      payload: {
+        to: msg.to,
+        conn: msg.conn,
+        op: msg.op,
+        data: msg.data ? msg.data.toString('base64') : undefined,
+      },
+    });
   }
 
   isConnected(): boolean {
@@ -128,7 +150,16 @@ export class WSRelayClient {
 
       case 'room_joined':
         this.currentRoomId = payload.id;
-        this.options.onRoomJoined(payload.id, payload);
+        this.options.onRoomJoined(
+          payload.id,
+          payload,
+          payload.game_info ? Buffer.from(payload.game_info, 'base64') : null
+        );
+        break;
+
+      case 'room_closed':
+        this.currentRoomId = null;
+        this.options.onRoomClosed();
         break;
 
       case 'room_list':
@@ -136,12 +167,20 @@ export class WSRelayClient {
         break;
 
       case 'room_update':
-        // Re-request list to get fresh player count
         this.requestRoomList();
         break;
 
-      case 'game_data':
-        this.options.onGameData(Buffer.from(payload.data, 'base64'));
+      case 'room_gameinfo':
+        this.options.onGameInfo(Buffer.from(payload.data, 'base64'));
+        break;
+
+      case 'tunnel':
+        this.options.onTunnel({
+          from: payload.from,
+          conn: payload.conn,
+          op: payload.op,
+          data: payload.data ? Buffer.from(payload.data, 'base64') : undefined,
+        });
         break;
 
       case 'error':
@@ -154,7 +193,7 @@ export class WSRelayClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectTimeout) return;
+    if (this.stopped || this.reconnectTimeout) return;
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;
       this.connect();
