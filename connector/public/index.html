@@ -198,7 +198,20 @@
       <div class="room-info">Вы в игре — запустите Warcraft 3</div>
       <div class="hint">Multiplayer → Local Area Network → игра уже в списке</div>
     </div>
-    <button class="btn-sm btn-danger" onclick="doLeave()">Выйти из игры</button>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-sm btn-success" onclick="launchWC3()">Запустить WC3</button>
+      <button class="btn-sm btn-danger" onclick="doLeave()">Выйти из игры</button>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
+  <div class="create-panel" style="border-top: 1px solid #2a2a4a;">
+    <h3>Настройки</h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="wc3Path" placeholder="Путь к Warcraft III.exe" 
+        style="flex:1" value="" readonly onclick="selectWC3Path()" />
+      <button class="btn-sm btn-primary" onclick="selectWC3Path()">Выбрать</button>
+    </div>
   </div>
 
   <!-- Create room -->
@@ -348,6 +361,31 @@
     const banner = document.getElementById('inRoomBanner');
     banner.style.display = state ? 'flex' : 'none';
   }
+
+  // ── WC3 Path & Launch ───────────────────────
+  async function selectWC3Path() {
+    const result = await window.connector.selectWC3Path();
+    if (result.success && result.path) {
+      document.getElementById('wc3Path').value = result.path;
+      localStorage.setItem('wc3Path', result.path);
+    }
+  }
+
+  async function launchWC3() {
+    const path = document.getElementById('wc3Path').value || localStorage.getItem('wc3Path');
+    if (!path) {
+      showToast('Сначала выберите путь к Warcraft III.exe в настройках');
+      return;
+    }
+    const result = await window.connector.launchWC3(path);
+    if (!result.success) showToast(result.error);
+  }
+
+  // Load saved WC3 path on start
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedPath = localStorage.getItem('wc3Path');
+    if (savedPath) document.getElementById('wc3Path').value = savedPath;
+  });
 
   // Enter key for auth
   document.addEventListener('keydown', e => {

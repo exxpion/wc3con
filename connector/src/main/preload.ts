@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('connector', {
   leaveRoom: () =>
     ipcRenderer.invoke('connector:leave-room'),
 
+  selectWC3Path: () =>
+    ipcRenderer.invoke('connector:select-wc3-path'),
+
+  launchWC3: (path: string) =>
+    ipcRenderer.invoke('connector:launch-wc3', path),
+
   // Events from main process
   onStatus: (cb: (data: { connected: boolean }) => void) =>
     ipcRenderer.on('connector:status', (_e, data) => cb(data)),

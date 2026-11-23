@@ -102,6 +102,8 @@ export class UDPBroadcaster {
     const first = !this.gamePacket;
     this.gamePacket = rewriteGameInfoPort(hostGameInfo, proxyPort);
 
+    console.log(`[UDP ANNOUNCE] Starting announce mode: proxyPort=${proxyPort}, firstTime=${first}, packetSize=${this.gamePacket.length}`);
+
     if (first || !this.timer) {
       this.createSent = false;
       this.startTimer(() => this.announceTick(), 2000);
@@ -113,9 +115,11 @@ export class UDPBroadcaster {
   private announceTick(): void {
     if (!this.gamePacket) return;
     if (!this.createSent) {
+      console.log('[UDP ANNOUNCE] Sending CREATEGAME to WC3 at 127.0.0.1:6112');
       this.sendToWc3(buildCreateGame());
       this.createSent = true;
     }
+    console.log(`[UDP ANNOUNCE] Broadcasting GAMEINFO to WC3 (${this.gamePacket.length} bytes)`);
     this.sendToWc3(this.gamePacket);
   }
 

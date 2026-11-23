@@ -1,6 +1,8 @@
 {
   "name": "@wc3-connector/connector",
   "version": "1.0.0",
+  "description": "Warcraft III LAN Connector",
+  "author": "WC3 Connector Team",
   "private": true,
   "main": "dist/main/index.js",
   "scripts": {
@@ -10,7 +12,24 @@
     "build": "npm run build:main && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json",
     "build:renderer": "vite build",
-    "package": "electron-builder"
+    "start": "electron .",
+    "package": "npm run build && electron-builder",
+    "make": "npm run build && electron-builder"
+  },
+  "build": {
+    "appId": "com.wc3connector.app",
+    "productName": "WC3 Connector",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": ["portable"],
+      "icon": "build/icon.ico"
+    }
   },
   "dependencies": {
     "ws": "^8.18.0"
@@ -20,7 +39,7 @@
     "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
     "concurrently": "^8.2.2",
-    "electron": "^28.1.0",
+    "electron": "28.1.0",
     "electron-builder": "^24.9.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

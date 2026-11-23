@@ -34,8 +34,8 @@ function createWindow() {
     },
   });
 
-  // Always load from public/index.html
-  const htmlPath = path.join(__dirname, '../../public/index.html');
+  // Load renderer HTML
+  const htmlPath = path.join(__dirname, '../renderer/index.html');
   mainWindow.loadFile(htmlPath);
   mainWindow.webContents.openDevTools(); // для отладки
 
@@ -217,8 +217,13 @@ function connectWSClient(token: string) {
 
     // Хост прислал (свежий) GAMEINFO
     onGameInfo: (gameInfo) => {
-      if (role !== 'guest' || !tcpProxy || !udpBroadcaster) return;
+      console.log(`[GAMEINFO RECEIVED] role=${role}, tcpProxy=${!!tcpProxy}, udpBroadcaster=${!!udpBroadcaster}, guestAnnounced=${guestAnnounced}, gameInfoSize=${gameInfo.length}`);
+      if (role !== 'guest' || !tcpProxy || !udpBroadcaster) {
+        console.warn('[GAMEINFO SKIP] Not in guest mode or network stack not ready');
+        return;
+      }
       if (!guestAnnounced) {
+        console.log(`[GAMEINFO] First announce: proxy port=${tcpProxy.port}`);
         udpBroadcaster.announce(gameInfo, tcpProxy.port);
         guestAnnounced = true;
         sendToRenderer('connector:banner', {
@@ -227,6 +232,7 @@ function connectWSClient(token: string) {
         });
         notice('Хост создал игру — она появится в списке «Локальная сеть»');
       } else {
+        console.log('[GAMEINFO] Updating game info');
         udpBroadcaster.updateGame(gameInfo);
       }
     },
