@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { WSMessageType } from '../types.js';
 
 export type TunnelOp = 'open' | 'data' | 'close' | 'close_all';
 
@@ -47,7 +48,7 @@ export class WSRelayClient {
 
     ws.on('open', () => {
       this.isConnecting = false;
-      this.send({ type: 'auth', payload: { token: this.options.token } });
+      this.send({ type: WSMessageType.AUTH, payload: { token: this.options.token } });
     });
 
     ws.on('message', (data: Buffer) => {
@@ -84,33 +85,33 @@ export class WSRelayClient {
   }
 
   createRoom(name: string, map: string, maxPlayers = 12): void {
-    this.send({ type: 'create_room', payload: { name, map, maxPlayers } });
+    this.send({ type: WSMessageType.CREATE_ROOM, payload: { name, map, maxPlayers } });
   }
 
   joinRoom(roomId: string): void {
-    this.send({ type: 'join_room', payload: { roomId } });
+    this.send({ type: WSMessageType.JOIN_ROOM, payload: { roomId } });
   }
 
   leaveRoom(): void {
     if (this.currentRoomId) {
-      this.send({ type: 'leave_room' });
+      this.send({ type: WSMessageType.LEAVE_ROOM });
       this.currentRoomId = null;
     }
   }
 
   requestRoomList(): void {
-    this.send({ type: 'room_list' });
+    this.send({ type: WSMessageType.ROOM_LIST });
   }
 
   /** Хост: отправить GAMEINFO своей игры */
   sendGameInfo(packet: Buffer): void {
-    this.send({ type: 'room_gameinfo', payload: { data: packet.toString('base64') } });
+    this.send({ type: WSMessageType.ROOM_GAMEINFO, payload: { data: packet.toString('base64') } });
   }
 
   /** Отправить кусок туннельного трафика */
   sendTunnel(msg: TunnelMessage): void {
     this.send({
-      type: 'tunnel',
+      type: WSMessageType.TUNNEL,
       payload: {
         to: msg.to,
         conn: msg.conn,
@@ -134,21 +135,21 @@ export class WSRelayClient {
     const { type, payload } = message;
 
     switch (type) {
-      case 'auth_success':
+      case WSMessageType.AUTH_SUCCESS:
         this.options.onConnected();
         this.requestRoomList();
         break;
 
-      case 'auth_error':
+      case WSMessageType.AUTH_ERROR:
         this.options.onError(payload.error);
         break;
 
-      case 'room_created':
+      case WSMessageType.ROOM_CREATED:
         this.currentRoomId = payload.id;
         this.options.onRoomCreated(payload.id, payload);
         break;
 
-      case 'room_joined':
+      case WSMessageType.ROOM_JOINED:
         this.currentRoomId = payload.id;
         this.options.onRoomJoined(
           payload.id,
@@ -157,24 +158,24 @@ export class WSRelayClient {
         );
         break;
 
-      case 'room_closed':
+      case WSMessageType.ROOM_CLOSED:
         this.currentRoomId = null;
         this.options.onRoomClosed();
         break;
 
-      case 'room_list':
+      case WSMessageType.ROOM_LIST:
         this.options.onRoomList(payload);
         break;
 
-      case 'room_update':
+      case WSMessageType.ROOM_UPDATE:
         this.requestRoomList();
         break;
 
-      case 'room_gameinfo':
+      case WSMessageType.ROOM_GAMEINFO:
         this.options.onGameInfo(Buffer.from(payload.data, 'base64'));
         break;
 
-      case 'tunnel':
+      case WSMessageType.TUNNEL:
         this.options.onTunnel({
           from: payload.from,
           conn: payload.conn,
@@ -183,12 +184,12 @@ export class WSRelayClient {
         });
         break;
 
-      case 'error':
+      case WSMessageType.ERROR:
         this.options.onError(payload.error);
         break;
 
       default:
-        console.warn('Unknown message type:', type);
+        console.error('[WS] Unknown message type:', type, 'payload:', payload);
     }
   }
 
