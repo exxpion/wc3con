@@ -1,0 +1,22 @@
+{
+  "name": "wc3-connector",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "server",
+    "web",
+    "connector"
+  ],
+  "scripts": {
+    "dev:server": "npm run dev --workspace=server",
+    "dev:web": "npm run dev --workspace=web",
+    "dev:connector": "npm run dev --workspace=connector",
+    "build": "npm run build --workspaces",
+    "build:server": "npm run build --workspace=server",
+    "build:web": "npm run build --workspace=web",
+    "build:connector": "npm run build --workspace=connector"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
