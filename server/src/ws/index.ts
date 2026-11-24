@@ -33,10 +33,6 @@ export function setupWebSocketServer(app: FastifyInstance) {
         const raw = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as any);
         const message = JSON.parse(raw.toString('utf8')) as WSMessage;
         if (!message || typeof message.type !== 'string') throw new Error('Message must contain a type');
-        if (message.protocolVersion !== PROTOCOL_VERSION) {
-          send(ws, { type: WSMessageType.ERROR, payload: { error: `Unsupported protocol version; expected ${PROTOCOL_VERSION}` } });
-          return;
-        }
         await handleMessage(ws, message, client, (next) => { client = next; });
       } catch (err) {
         app.log.warn({ err }, 'Rejected malformed WebSocket message');

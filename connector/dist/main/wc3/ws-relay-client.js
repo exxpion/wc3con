@@ -41,9 +41,6 @@ class WSRelayClient {
                 if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
                     throw new Error('Malformed server message');
                 }
-                if (message.protocolVersion !== exports.WS_PROTOCOL_VERSION) {
-                    throw new Error(`Unsupported relay protocol version: ${message.protocolVersion}`);
-                }
                 this.handleMessage(message);
             }
             catch (err) {

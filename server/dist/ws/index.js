@@ -24,10 +24,6 @@ export function setupWebSocketServer(app) {
                 const message = JSON.parse(raw.toString('utf8'));
                 if (!message || typeof message.type !== 'string')
                     throw new Error('Message must contain a type');
-                if (message.protocolVersion !== PROTOCOL_VERSION) {
-                    send(ws, { type: WSMessageType.ERROR, payload: { error: `Unsupported protocol version; expected ${PROTOCOL_VERSION}` } });
-                    return;
-                }
                 await handleMessage(ws, message, client, (next) => { client = next; });
             }
             catch (err) {
