@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WC3 Connector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ───────────────────────────────── */
+    .header {
+      background: #1a1a2e;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .header h1 { font-size: 18px; color: #7eb8f7; }
+    .status-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #555;
+      margin-right: 6px;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: #50fa7b; }
+    .status-label { font-size: 13px; color: #aaa; }
+
+    /* ── Auth form ────────────────────────────── */
+    .auth-wrap {
+      display: flex;
+      flex: 1;
+      align-items: center;
+      justify-content: center;
+    }
+    .auth-box {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 32px 36px;
+      width: 340px;
+    }
+    .auth-box h2 { font-size: 20px; margin-bottom: 20px; color: #7eb8f7; text-align: center; }
+    .auth-tabs { display: flex; margin-bottom: 20px; }
+    .auth-tab {
+      flex: 1; padding: 8px; text-align: center; cursor: pointer;
+      border: 1px solid #2a2a4a; color: #aaa; font-size: 14px;
+      transition: all 0.2s;
+    }
+    .auth-tab:first-child { border-radius: 6px 0 0 6px; }
+    .auth-tab:last-child  { border-radius: 0 6px 6px 0; }
+    .auth-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+    input {
+      width: 100%; padding: 10px 12px;
+      background: #0f0f1a; border: 1px solid #2a2a4a;
+      border-radius: 6px; color: #e0e0e0; font-size: 14px;
+      margin-bottom: 10px; outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #2563eb; }
+
+    .btn {
+      width: 100%; padding: 10px;
+      border: none; border-radius: 6px;
+      font-size: 14px; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-success { background: #16a34a; color: #fff; }
+    .btn-danger  { background: #dc2626; color: #fff; margin-top: 6px; }
+    .btn-sm {
+      padding: 6px 14px; font-size: 13px;
+      border: none; border-radius: 5px;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn-sm:hover { opacity: 0.85; }
+
+    /* ── Main app ─────────────────────────────── */
+    .app-wrap { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+
+    /* ── Game list ───────────────────────────── */
+    .game-section { flex: 1; display: flex; flex-direction: column; padding: 16px 20px; overflow: hidden; }
+    .section-title {
+      font-size: 15px; font-weight: 600; color: #7eb8f7;
+      margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+    }
+    .game-count {
+      background: #2563eb; color: #fff;
+      border-radius: 10px; padding: 1px 7px; font-size: 12px;
+    }
+    .game-list { flex: 1; overflow-y: auto; }
+    .game-list::-webkit-scrollbar { width: 4px; }
+    .game-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+
+    .game-card {
+      background: #1a1a2e; border: 1px solid #2a2a4a;
+      border-radius: 8px; padding: 12px 14px;
+      margin-bottom: 8px; display: flex;
+      align-items: center; justify-content: space-between;
+      transition: border-color 0.2s;
+    }
+    .game-card:hover { border-color: #2563eb; }
+    .game-info { flex: 1; min-width: 0; }
+    .game-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .game-meta { font-size: 12px; color: #888; margin-top: 3px; }
+    .game-slots { font-size: 13px; color: #50fa7b; margin-left: 12px; white-space: nowrap; }
+    .btn-join { background: #2563eb; color: #fff; }
+    .btn-join:disabled { background: #555; cursor: not-allowed; opacity: 1; }
+
+    .empty-state {
+      text-align: center; color: #555; padding: 40px 20px;
+      font-size: 14px; line-height: 1.6;
+    }
+
+    /* ── Create room panel ───────────────────── */
+    .create-panel {
+      background: #1a1a2e; border-top: 1px solid #2a2a4a;
+      padding: 14px 20px;
+    }
+    .create-panel h3 { font-size: 14px; color: #7eb8f7; margin-bottom: 10px; }
+    .create-row { display: flex; gap: 8px; }
+    .create-row input { margin-bottom: 0; }
+
+    /* ── In-room state ───────────────────────── */
+    .in-room-banner {
+      background: #14532d; border-top: 1px solid #16a34a;
+      padding: 12px 20px; display: none;
+      align-items: center; justify-content: space-between;
+    }
+    .in-room-banner .room-info { font-size: 14px; color: #86efac; }
+    .in-room-banner .hint { font-size: 12px; color: #4ade80; margin-top: 2px; }
+
+    /* ── Error toast ─────────────────────────── */
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: #7f1d1d; color: #fca5a5; border-radius: 8px;
+      padding: 10px 20px; font-size: 13px;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Auth ──────────────────────────────────────────────────────────── -->
+<div class="auth-wrap" id="authWrap">
+  <div class="auth-box">
+    <h2>WC3 Connector</h2>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Войти</div>
+      <div class="auth-tab" id="tabRegister" onclick="switchTab('register')">Регистрация</div>
+    </div>
+    <input type="text" id="username" placeholder="Имя пользователя" autocomplete="off" />
+    <input type="password" id="password" placeholder="Пароль" />
+    <button class="btn btn-primary" id="authBtn" onclick="doAuth()">Войти</button>
+  </div>
+</div>
+
+<!-- ── Main App ───────────────────────────────────────────────────────── -->
+<div class="app-wrap" id="appWrap">
+
+  <div class="header">
+    <h1>WC3 Connector</h1>
+    <div>
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">Подключение...</span>
+    </div>
+  </div>
+
+  <div class="game-section">
+    <div class="section-title">
+      Доступные игры
+      <span class="game-count" id="gameCount">0</span>
+    </div>
+    <div class="game-list" id="gameList">
+      <div class="empty-state">
+        Нет активных игр.<br>Создайте игру или подождите пока кто-нибудь создаст.
+      </div>
+    </div>
+  </div>
+
+  <!-- In-room banner -->
+  <div class="in-room-banner" id="inRoomBanner">
+    <div>
+      <div class="room-info">Вы в комнате</div>
+      <div class="hint">Ожидаем создания LAN-игры хостом в Warcraft III 1.26</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-sm btn-success" onclick="launchWC3()">Запустить WC3</button>
+      <button class="btn-sm btn-danger" onclick="doLeave()">Выйти из игры</button>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
+  <div class="create-panel" style="border-top: 1px solid #2a2a4a;">
+    <h3>Настройки</h3>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <input type="text" id="wc3Path" placeholder="Путь к Warcraft III.exe" 
+        style="flex:1" value="" readonly onclick="selectWC3Path()" />
+      <button class="btn-sm btn-primary" onclick="selectWC3Path()">Выбрать</button>
+    </div>
+  </div>
+
+  <!-- Create room -->
+  <div class="create-panel">
+    <h3>Создать игру</h3>
+    <div class="create-row">
+      <input type="text" id="roomName" placeholder="Название" style="flex:1" />
+      <input type="text" id="mapName" placeholder="Выберите карту .w3x / .w3m" style="flex:2" readonly />
+      <button class="btn-sm btn-primary" onclick="selectMapPath()">Карта</button>
+      <button class="btn-sm btn-success" onclick="doCreateRoom()">Создать</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+  let currentTab = 'login';
+  let inRoom = false;
+  let selectedMapPath = ''; 
+
+  // ── Tab switch ──────────────────────────────
+  function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
+    document.getElementById('authBtn').textContent = tab === 'login' ? 'Войти' : 'Зарегистрироваться';
+  }
+
+  // ── Auth ────────────────────────────────────
+  async function doAuth() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (!username || !password) return showToast('Введите логин и пароль');
+
+    const btn = document.getElementById('authBtn');
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    let result;
+    if (currentTab === 'register') {
+      result = await window.connector.register(username, password);
+      if (!result.success) { btn.disabled = false; btn.textContent = 'Зарегистрироваться'; return showToast(result.error); }
+      // Auto-login after register
+      result = await window.connector.login(username, password);
+    } else {
+      result = await window.connector.login(username, password);
+    }
+
+    btn.disabled = false;
+    btn.textContent = currentTab === 'login' ? 'Войти' : 'Зарегистрироваться';
+
+    if (!result.success) return showToast(result.error);
+
+    document.getElementById('authWrap').style.display = 'none';
+    document.getElementById('appWrap').style.display = 'flex';
+  }
+
+  // ── Create room ─────────────────────────────
+  async function selectMapPath() {
+    const result = await window.connector.selectMapPath();
+    if (result.success && result.path) {
+      selectedMapPath = result.path;
+      document.getElementById('mapName').value = result.name;
+      localStorage.setItem('wc3MapPath', result.path);
+    }
+  }
+
+  async function doCreateRoom() {
+    if (inRoom) return showToast('Сначала выйдите из текущей игры');
+    const name = document.getElementById('roomName').value.trim();
+    const map  = document.getElementById('mapName').value.trim();
+    if (!name || !map) return showToast('Введите название и карту');
+
+    const result = await window.connector.createRoom(name, map);
+    if (!result.success) showToast(result.error);
+  }
+
+  // ── Join room ───────────────────────────────
+  async function doJoin(roomId) {
+    if (inRoom) return showToast('Сначала выйдите из текущей игры');
+    const result = await window.connector.joinRoom(roomId);
+    if (!result.success) showToast(result.error);
+  }
+
+  // ── Leave room ──────────────────────────────
+  async function doLeave() {
+    await window.connector.leaveRoom();
+  }
+
+  // ── Render game list ────────────────────────
+  function renderRooms(rooms) {
+    const list = document.getElementById('gameList');
+    document.getElementById('gameCount').textContent = rooms.length;
+
+    if (rooms.length === 0) {
+      list.innerHTML = '<div class="empty-state">Нет активных игр.<br>Создайте игру или подождите.</div>';
+      return;
+    }
+
+    list.innerHTML = rooms.map(room => {
+      const full = room.current_players >= room.max_players;
+      return `
+        <div class="game-card">
+          <div class="game-info">
+            <div class="game-name">${escHtml(room.name)}</div>
+            <div class="game-meta">${escHtml(room.map)}</div>
+          </div>
+          <div class="game-slots">${room.current_players}/${room.max_players}</div>
+          <button class="btn-sm btn-join" style="margin-left:12px"
+            onclick="doJoin('${room.id}')" ${full ? 'disabled' : ''}>
+            ${full ? 'Полная' : 'Войти'}
+          </button>
+        </div>`;
+    }).join('');
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Toast ───────────────────────────────────
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3500);
+  }
+
+  // ── Events from main process ────────────────
+  window.connector.onStatus(({ connected }) => {
+    const dot   = document.getElementById('statusDot');
+    const label = document.getElementById('statusLabel');
+    dot.classList.toggle('connected', connected);
+    label.textContent = connected ? 'Подключено' : 'Переподключение...';
+  });
+
+  window.connector.onRoomList(renderRooms);
+
+  window.connector.onRoomCreated((roomId) => {
+    setInRoom(true);
+  });
+
+  window.connector.onRoomJoined((roomId) => {
+    setInRoom(true);
+  });
+
+  window.connector.onRoomRestored(() => setInRoom(true));
+  window.connector.onNotice(showToast);
+  window.connector.onBanner(({ title, hint }) => {
+    document.querySelector('#inRoomBanner .room-info').textContent = title;
+    document.querySelector('#inRoomBanner .hint').textContent = hint;
+  });
+
+  window.connector.onRoomLeft(() => {
+    setInRoom(false);
+  });
+
+  window.connector.onError(showToast);
+
+  function setInRoom(state) {
+    inRoom = state;
+    const banner = document.getElementById('inRoomBanner');
+    banner.style.display = state ? 'flex' : 'none';
+  }
+
+  // ── WC3 Path & Launch ───────────────────────
+  async function selectWC3Path() {
+    const result = await window.connector.selectWC3Path();
+    if (result.success && result.path) {
+      document.getElementById('wc3Path').value = result.path;
+      localStorage.setItem('wc3Path', result.path);
+    }
+  }
+
+  async function launchWC3() {
+    const path = document.getElementById('wc3Path').value || localStorage.getItem('wc3Path');
+    if (!path) {
+      showToast('Сначала выберите путь к Warcraft III.exe в настройках');
+      return;
+    }
+    const result = await window.connector.launchWC3(path);
+    if (!result.success) showToast(result.error);
+  }
+
+  // Load saved paths on start
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedPath = localStorage.getItem('wc3Path');
+    if (savedPath) document.getElementById('wc3Path').value = savedPath;
+    const savedMapPath = localStorage.getItem('wc3MapPath');
+    if (savedMapPath) {
+      selectedMapPath = savedMapPath;
+      document.getElementById('mapName').value = savedMapPath.split(/[\\/]/).pop();
+    }
+  });
+
+  // Enter key for auth
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('authWrap').style.display !== 'none') {
+      doAuth();
+    }
+  });
+</script>
+</body>
+</html>

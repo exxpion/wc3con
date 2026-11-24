@@ -35,6 +35,8 @@ if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET.includes('change-this-se
   throw new Error('JWT_SECRET must be set to a unique random value of at least 32 characters');
 }
 
+const jwtSecret: string = JWT_SECRET; // Type assertion after validation
+
 async function start() {
   try {
     // Register plugins
@@ -44,7 +46,7 @@ async function start() {
     });
 
     await app.register(jwt, {
-      secret: JWT_SECRET,
+      secret: jwtSecret,
     });
 
     // Setup routes
