@@ -16,9 +16,11 @@ let role: 'host' | 'guest' | null = null;
 let hostGameFound = false;
 // Гость: показываем ли мы уже игру хоста в локальном WC3
 let guestAnnounced = false;
+let hostGamePort = 0;
+let currentUserId: number | null = null;
 
-const SERVER_URL = 'ws://130.78.13.15:3000/ws';
-const API_URL = 'http://130.78.13.15:3000';
+const API_URL = process.env.WC3_SERVER_HTTP_URL || 'http://130.78.13.15:3000';
+const SERVER_URL = process.env.WC3_SERVER_WS_URL || API_URL.replace(/^http/, 'ws') + '/ws';
 // Порт самого Warcraft III. Коннектор его НЕ занимает — он только обращается к WC3 по этому порту.
 const WC3_PORT = 6112;
 
@@ -37,7 +39,7 @@ function createWindow() {
   // Load renderer HTML
   const htmlPath = path.join(__dirname, '../renderer/index.html');
   mainWindow.loadFile(htmlPath);
-  mainWindow.webContents.openDevTools(); // для отладки
+  if (!app.isPackaged) mainWindow.webContents.openDevTools();
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -62,6 +64,7 @@ function resetRoomState() {
   role = null;
   hostGameFound = false;
   guestAnnounced = false;
+  hostGamePort = 0;
 }
 
 function cleanup() {
@@ -115,7 +118,8 @@ function handleTunnel(msg: TunnelMessage) {
     if (userId === undefined) return;
     switch (msg.op) {
       case 'open':
-        hostTunnel?.open(userId, msg.conn);
+        if (hostGamePort > 0) hostTunnel?.open(userId, msg.conn, hostGamePort);
+        else console.warn('[TUNNEL] guest tried to connect before host GAMEINFO was discovered');
         break;
       case 'data':
         if (msg.data) hostTunnel?.write(userId, msg.conn, msg.data);
@@ -152,13 +156,21 @@ function connectWSClient(token: string) {
       sendToRenderer('connector:status', { connected: true });
     },
 
-    onDisconnected: () => {
-      console.log('Disconnected from relay server');
-      const wasInRoom = role !== null;
+    onReconnectExpired: () => {
+      console.warn('Relay reconnect grace period expired locally');
       resetRoomState();
+      sendToRenderer('connector:room-left');
+      notice('Время переподключения истекло. Вы исключены из комнаты');
+    },
+
+    onDisconnected: () => {
+      console.log('Disconnected from relay server; preserving room and TCP sockets during reconnect grace period');
+      // Stop advertising stale GAMEINFO, but keep TCP endpoints alive so queued relay data
+      // can be flushed if the WebSocket returns within the server's 180s grace period.
+      udpBroadcaster?.reset();
+      guestAnnounced = false;
       sendToRenderer('connector:status', { connected: false });
-      sendToRenderer('connector:room-list', []);
-      if (wasInRoom) sendToRenderer('connector:room-left');
+      notice('Связь с игровым relay потеряна. Ожидаем переподключения (до 180 секунд)');
     },
 
     // ── Мы создали комнату: мы ХОСТ ──
@@ -169,27 +181,33 @@ function connectWSClient(token: string) {
 
       // Ищем игру, которую хост создаст в своём Warcraft III
       udpBroadcaster?.probe((packet, info) => {
+        hostGamePort = info.port;
         wsClient?.sendGameInfo(packet);
         if (!hostGameFound) {
           hostGameFound = true;
           notice(`Игра «${info.gameName}» найдена — гости могут подключаться`);
         }
+      }, () => {
+        hostGameFound = false;
+        hostGamePort = 0;
+        wsClient?.sendGameInfoLost();
+        notice('Игра Warcraft III больше не обнаруживается. Комната остаётся открытой');
       });
 
       sendToRenderer('connector:banner', {
         title: 'Комната создана — теперь создайте игру в Warcraft III',
-        hint: 'Warcraft III → Локальная сеть → Создать игру. Коннектор найдёт её сам.',
+        hint: 'Создайте LAN-игру вручную с выбранной картой. Автопроверка несовпадения карты пока не включена.',
       });
       sendToRenderer('connector:room-created', roomId);
     },
 
     // ── Мы вошли в чужую комнату: мы ГОСТЬ ──
-    onRoomJoined: (roomId, _room, gameInfo) => {
+    onRoomJoined: (roomId, room, gameInfo) => {
       console.log('Joined room:', roomId);
       role = 'guest';
       guestAnnounced = false;
 
-      if (gameInfo && tcpProxy && udpBroadcaster) {
+      if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
         udpBroadcaster.announce(gameInfo, tcpProxy.port);
         guestAnnounced = true;
         sendToRenderer('connector:banner', {
@@ -198,11 +216,41 @@ function connectWSClient(token: string) {
         });
       } else {
         sendToRenderer('connector:banner', {
-          title: 'Вы в комнате — ждём, пока хост создаст игру',
+          title: room.game_session_status === 'relay_paused' ? 'Игровой relay временно приостановлен' : 'Вы в комнате — ждём, пока хост создаст игру',
           hint: 'Когда хост создаст игру в Warcraft III, она сама появится в вашем списке «Локальная сеть»',
         });
       }
       sendToRenderer('connector:room-joined', roomId);
+    },
+
+    onRoomRestored: (roomId, room, gameInfo) => {
+      console.log('[ROOM] restored after relay reconnect:', roomId);
+      role = room.host_user_id === currentUserId ? 'host' : 'guest';
+      if (role === 'host') {
+        hostGameFound = false;
+        hostGamePort = 0;
+        udpBroadcaster?.probe((packet, info) => {
+          hostGamePort = info.port;
+          wsClient?.sendGameInfo(packet);
+          if (!hostGameFound) {
+            hostGameFound = true;
+            notice(`Связь восстановлена. Игра «${info.gameName}» снова доступна`);
+          }
+        }, () => {
+          hostGameFound = false;
+          hostGamePort = 0;
+          wsClient?.sendGameInfoLost();
+        });
+      } else if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
+        try {
+          udpBroadcaster.announce(gameInfo, tcpProxy.port);
+          guestAnnounced = true;
+        } catch (err: any) {
+          notice(`Не удалось восстановить объявление игры: ${err.message}`);
+        }
+      }
+      sendToRenderer('connector:room-restored', { roomId, role });
+      notice('Соединение с relay восстановлено');
     },
 
     onRoomClosed: () => {
@@ -237,10 +285,46 @@ function connectWSClient(token: string) {
       }
     },
 
+    onGameInfoLost: () => {
+      if (role === 'guest') {
+        udpBroadcaster?.reset();
+        guestAnnounced = false;
+        notice('Хост закрыл или перезапустил игру. Ожидаем новую LAN-сессию');
+      }
+    },
+
+    onRelayState: (state, payload) => {
+      if (state === 'paused') {
+        udpBroadcaster?.reset();
+        guestAnnounced = false;
+        const seconds = Math.max(0, Math.ceil(((payload?.reconnectDeadline ?? Date.now() + 180000) - Date.now()) / 1000));
+        notice(`Потеряна связь с игровым relay. Ожидание переподключения: до ${seconds} сек.`);
+      } else {
+        notice('Связь участников с игровым relay восстановлена');
+        if (role === 'host') {
+          hostGameFound = false;
+          hostGamePort = 0;
+          udpBroadcaster?.probe((packet, info) => {
+            hostGamePort = info.port;
+            wsClient?.sendGameInfo(packet);
+            hostGameFound = true;
+          }, () => {
+            hostGameFound = false;
+            hostGamePort = 0;
+            wsClient?.sendGameInfoLost();
+          });
+        }
+      }
+    },
+
     onTunnel: handleTunnel,
 
     onError: (error) => {
       console.error('WS error:', error);
+      if (/invalid|expired token|connected from another connector instance/i.test(error)) {
+        resetRoomState();
+        sendToRenderer('connector:room-left');
+      }
       sendToRenderer('connector:error', error);
     },
   });
@@ -285,6 +369,7 @@ ipcMain.handle('connector:login', async (_e, username: string, password: string)
       return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
     }
 
+    currentUserId = user.id;
     connectWSClient(token);
 
     return { success: true, user };
@@ -295,6 +380,7 @@ ipcMain.handle('connector:login', async (_e, username: string, password: string)
 
 ipcMain.handle('connector:logout', async () => {
   cleanup();
+  currentUserId = null;
   return { success: true };
 });
 
@@ -303,16 +389,16 @@ ipcMain.handle('connector:create-room', async (_e, name: string, map: string) =>
     return { success: false, error: 'Not connected to server' };
   }
   // name/map — только подпись в списке комнат; реальную игру хост создаёт в самом WC3
-  wsClient.createRoom(name, map, 12);
-  return { success: true };
+  const sent = wsClient.createRoom(name, map, 12);
+  return sent ? { success: true } : { success: false, error: 'Relay authentication is not complete yet' };
 });
 
 ipcMain.handle('connector:join-room', async (_e, roomId: string) => {
   if (!wsClient?.isConnected()) {
     return { success: false, error: 'Not connected to server' };
   }
-  wsClient.joinRoom(roomId);
-  return { success: true };
+  const sent = wsClient.joinRoom(roomId);
+  return sent ? { success: true } : { success: false, error: 'Relay authentication is not complete yet' };
 });
 
 ipcMain.handle('connector:leave-room', async () => {
@@ -320,6 +406,17 @@ ipcMain.handle('connector:leave-room', async () => {
   resetRoomState();
   sendToRenderer('connector:room-left');
   return { success: true };
+});
+
+ipcMain.handle('connector:select-map-path', async () => {
+  const { dialog } = require('electron');
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    title: 'Выберите карту Warcraft III',
+    filters: [{ name: 'Карты Warcraft III', extensions: ['w3x', 'w3m'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return { success: false };
+  return { success: true, path: result.filePaths[0], name: path.basename(result.filePaths[0]) };
 });
 
 ipcMain.handle('connector:select-wc3-path', async () => {

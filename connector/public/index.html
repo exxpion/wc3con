@@ -195,8 +195,8 @@
   <!-- In-room banner -->
   <div class="in-room-banner" id="inRoomBanner">
     <div>
-      <div class="room-info">Вы в игре — запустите Warcraft 3</div>
-      <div class="hint">Multiplayer → Local Area Network → игра уже в списке</div>
+      <div class="room-info">Вы в комнате</div>
+      <div class="hint">Ожидаем создания LAN-игры хостом в Warcraft III 1.26</div>
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn-sm btn-success" onclick="launchWC3()">Запустить WC3</button>
@@ -219,7 +219,8 @@
     <h3>Создать игру</h3>
     <div class="create-row">
       <input type="text" id="roomName" placeholder="Название" style="flex:1" />
-      <input type="text" id="mapName" placeholder="Карта (напр. DotA v6.83d.w3x)" style="flex:2" />
+      <input type="text" id="mapName" placeholder="Выберите карту .w3x / .w3m" style="flex:2" readonly />
+      <button class="btn-sm btn-primary" onclick="selectMapPath()">Карта</button>
       <button class="btn-sm btn-success" onclick="doCreateRoom()">Создать</button>
     </div>
   </div>
@@ -232,6 +233,7 @@
 <script>
   let currentTab = 'login';
   let inRoom = false;
+  let selectedMapPath = ''; 
 
   // ── Tab switch ──────────────────────────────
   function switchTab(tab) {
@@ -271,6 +273,15 @@
   }
 
   // ── Create room ─────────────────────────────
+  async function selectMapPath() {
+    const result = await window.connector.selectMapPath();
+    if (result.success && result.path) {
+      selectedMapPath = result.path;
+      document.getElementById('mapName').value = result.name;
+      localStorage.setItem('wc3MapPath', result.path);
+    }
+  }
+
   async function doCreateRoom() {
     if (inRoom) return showToast('Сначала выйдите из текущей игры');
     const name = document.getElementById('roomName').value.trim();
@@ -350,6 +361,13 @@
     setInRoom(true);
   });
 
+  window.connector.onRoomRestored(() => setInRoom(true));
+  window.connector.onNotice(showToast);
+  window.connector.onBanner(({ title, hint }) => {
+    document.querySelector('#inRoomBanner .room-info').textContent = title;
+    document.querySelector('#inRoomBanner .hint').textContent = hint;
+  });
+
   window.connector.onRoomLeft(() => {
     setInRoom(false);
   });
@@ -381,10 +399,15 @@
     if (!result.success) showToast(result.error);
   }
 
-  // Load saved WC3 path on start
+  // Load saved paths on start
   window.addEventListener('DOMContentLoaded', () => {
     const savedPath = localStorage.getItem('wc3Path');
     if (savedPath) document.getElementById('wc3Path').value = savedPath;
+    const savedMapPath = localStorage.getItem('wc3MapPath');
+    if (savedMapPath) {
+      selectedMapPath = savedMapPath;
+      document.getElementById('mapName').value = savedMapPath.split(/[\\/]/).pop();
+    }
   });
 
   // Enter key for auth

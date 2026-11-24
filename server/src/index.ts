@@ -1,24 +1,39 @@
+import { existsSync, readFileSync } from 'fs';
+import path from 'path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { setupAuthRoutes } from './auth/index.js';
 import { setupWebSocketServer } from './ws/index.js';
 
+// Load a local .env file without adding a runtime dependency. Existing process
+// environment variables always take precedence.
+const envPath = path.resolve(process.cwd(), '.env');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
+  }
+}
+
+
 const app = Fastify({
-  logger: {
-    level: 'info',
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        translateTime: 'HH:MM:ss Z',
-        ignore: 'pid,hostname',
+  logger: process.env.NODE_ENV === 'production'
+    ? { level: 'info' }
+    : {
+        level: 'info',
+        transport: {
+          target: 'pino-pretty',
+          options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
+        },
       },
-    },
-  },
 });
 
-// JWT secret - in production, use environment variable
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32 || JWT_SECRET.includes('change-this-secret')) {
+  throw new Error('JWT_SECRET must be set to a unique random value of at least 32 characters');
+}
 
 async function start() {
   try {

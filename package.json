@@ -14,7 +14,8 @@
     "build": "npm run build --workspaces",
     "build:server": "npm run build --workspace=server",
     "build:web": "npm run build --workspace=web",
-    "build:connector": "npm run build --workspace=connector"
+    "build:connector": "npm run build --workspace=connector",
+    "check:protocol": "node scripts/check-protocol.cjs"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

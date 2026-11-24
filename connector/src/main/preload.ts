@@ -22,6 +22,9 @@ contextBridge.exposeInMainWorld('connector', {
   selectWC3Path: () =>
     ipcRenderer.invoke('connector:select-wc3-path'),
 
+  selectMapPath: () =>
+    ipcRenderer.invoke('connector:select-map-path'),
+
   launchWC3: (path: string) =>
     ipcRenderer.invoke('connector:launch-wc3', path),
 
@@ -37,6 +40,15 @@ contextBridge.exposeInMainWorld('connector', {
 
   onRoomJoined: (cb: (roomId: string) => void) =>
     ipcRenderer.on('connector:room-joined', (_e, roomId) => cb(roomId)),
+
+  onRoomRestored: (cb: (data: { roomId: string; role: string }) => void) =>
+    ipcRenderer.on('connector:room-restored', (_e, data) => cb(data)),
+
+  onNotice: (cb: (message: string) => void) =>
+    ipcRenderer.on('connector:notice', (_e, message) => cb(message)),
+
+  onBanner: (cb: (data: { title: string; hint: string }) => void) =>
+    ipcRenderer.on('connector:banner', (_e, data) => cb(data)),
 
   onRoomLeft: (cb: () => void) =>
     ipcRenderer.on('connector:room-left', () => cb()),

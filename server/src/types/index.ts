@@ -5,6 +5,8 @@ export interface User {
   created_at: number;
 }
 
+export type GameSessionStatus = 'not_created' | 'available' | 'unavailable' | 'relay_paused';
+
 export interface GameRoom {
   id: string;
   name: string;
@@ -14,14 +16,20 @@ export interface GameRoom {
   current_players: number;
   created_at: number;
   status: 'waiting' | 'started' | 'finished';
+  game_session_status: GameSessionStatus;
+  game_info_updated_at?: number;
 }
 
 export interface ConnectedClient {
   user_id: number;
   username: string;
-  ws: any;
+  ws: any | null;
   room_id?: string;
   is_host: boolean;
+  connected: boolean;
+  disconnect_deadline?: number;
+  disconnect_timer?: ReturnType<typeof setTimeout>;
+  expired_room_id?: string;
 }
 
 export interface AuthPayload {
@@ -31,31 +39,17 @@ export interface AuthPayload {
 
 export interface WSMessage {
   type: string;
+  protocolVersion?: number;
   payload?: any;
 }
 
-// WebSocket message types
 export enum WSMessageType {
-  // Auth
-  AUTH = 'auth',
-  AUTH_SUCCESS = 'auth_success',
-  AUTH_ERROR = 'auth_error',
-  
-  // Game rooms
-  CREATE_ROOM = 'create_room',
-  ROOM_CREATED = 'room_created',
-  JOIN_ROOM = 'join_room',
-  ROOM_JOINED = 'room_joined',
-  LEAVE_ROOM = 'leave_room',
-  ROOM_LIST = 'room_list',
-  ROOM_UPDATE = 'room_update',
-  
-  // Game traffic relay
-  GAME_DATA = 'game_data',
-  ROOM_GAMEINFO = 'room_gameinfo', // хост -> сервер -> гости: GAMEINFO игры WC3 (base64)
-  ROOM_CLOSED = 'room_closed',     // сервер -> гости: хост закрыл комнату
-  TUNNEL = 'tunnel',               // TCP-туннель гость <-> хост (open/data/close по id соединения)
-  
-  // Errors
+  AUTH = 'auth', AUTH_SUCCESS = 'auth_success', AUTH_ERROR = 'auth_error',
+  CREATE_ROOM = 'create_room', ROOM_CREATED = 'room_created',
+  JOIN_ROOM = 'join_room', ROOM_JOINED = 'room_joined', ROOM_RESTORED = 'room_restored',
+  LEAVE_ROOM = 'leave_room', ROOM_LIST = 'room_list', ROOM_UPDATE = 'room_update',
+  GAME_DATA = 'game_data', ROOM_GAMEINFO = 'room_gameinfo',
+  ROOM_GAMEINFO_LOST = 'room_gameinfo_lost', ROOM_CLOSED = 'room_closed', TUNNEL = 'tunnel',
+  GAME_RELAY_PAUSED = 'game_relay_paused', GAME_RELAY_RESUMED = 'game_relay_resumed',
   ERROR = 'error',
 }

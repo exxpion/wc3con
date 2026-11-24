@@ -14,7 +14,8 @@
     "build:renderer": "vite build",
     "start": "electron .",
     "package": "npm run build && electron-builder",
-    "make": "npm run build && electron-builder"
+    "make": "npm run build && electron-builder",
+    "test:protocol": "npm run build:main && node --test test/protocol.test.cjs"
   },
   "build": {
     "appId": "com.wc3connector.app",
@@ -27,7 +28,9 @@
       "package.json"
     ],
     "win": {
-      "target": ["portable"],
+      "target": [
+        "portable"
+      ],
       "icon": "build/icon.ico"
     }
   },

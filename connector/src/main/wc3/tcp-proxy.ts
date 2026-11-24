@@ -37,7 +37,7 @@ export class TCPProxy {
         console.log(`WC3 connected to proxy (conn ${connId})`);
         this.options.onOpen(connId);
 
-        socket.on('data', (data) => this.options.onData(connId, data));
+        socket.on('data', (data) => this.options.onData(connId, Buffer.isBuffer(data) ? data : Buffer.from(data)));
 
         socket.on('close', () => {
           if (this.sockets.delete(connId)) {
@@ -118,16 +118,20 @@ export class HostTunnel {
     return `${userId}:${connId}`;
   }
 
-  open(userId: number, connId: number): void {
+  open(userId: number, connId: number, gamePort = this.options.wc3Port): void {
     const key = this.key(userId, connId);
     this.close(userId, connId);
 
-    const socket = net.connect({ host: '127.0.0.1', port: this.options.wc3Port });
+    if (!Number.isInteger(gamePort) || gamePort < 1 || gamePort > 65535) {
+      console.error(`Refusing host tunnel with invalid WC3 port: ${gamePort}`);
+      return;
+    }
+    const socket = net.connect({ host: '127.0.0.1', port: gamePort });
     socket.setNoDelay(true);
     this.sockets.set(key, socket);
 
-    socket.on('connect', () => console.log(`Host tunnel ${key} -> WC3 :${this.options.wc3Port}`));
-    socket.on('data', (data) => this.options.onData(userId, connId, data));
+    socket.on('connect', () => console.log(`Host tunnel ${key} -> WC3 :${gamePort}`));
+    socket.on('data', (data) => this.options.onData(userId, connId, Buffer.isBuffer(data) ? data : Buffer.from(data)));
     socket.on('close', () => {
       if (this.sockets.get(key) === socket) {
         this.sockets.delete(key);
