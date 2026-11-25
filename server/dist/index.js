@@ -5,6 +5,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { setupAuthRoutes } from './auth/index.js';
 import { setupWebSocketServer } from './ws/index.js';
+import { startDbCleanup } from './db/index.js';
 // Load a local .env file without adding a runtime dependency. Existing process
 // environment variables always take precedence.
 const envPath = path.resolve(process.cwd(), '.env');
@@ -45,6 +46,8 @@ async function start() {
         setupAuthRoutes(app);
         // Setup WebSocket server
         setupWebSocketServer(app);
+        // Start periodic cleanup of expired codes / stale pending registrations
+        startDbCleanup();
         // Health check
         app.get('/health', async () => {
             return { status: 'ok', timestamp: Date.now() };

@@ -26,6 +26,17 @@
       border-bottom: 1px solid #2a2a4a;
     }
     .header h1 { font-size: 18px; color: #7eb8f7; }
+    .header-status {
+      display: flex;
+      align-items: center;
+    }
+    .header-user {
+      font-size: 13px;
+      color: #7eb8f7;
+      font-weight: 600;
+      min-width: 80px;
+      text-align: right;
+    }
     .status-dot {
       display: inline-block;
       width: 10px; height: 10px;
@@ -49,7 +60,7 @@
       border: 1px solid #2a2a4a;
       border-radius: 10px;
       padding: 32px 36px;
-      width: 340px;
+      width: 360px;
     }
     .auth-box h2 { font-size: 20px; margin-bottom: 20px; color: #7eb8f7; text-align: center; }
     .auth-tabs { display: flex; margin-bottom: 20px; }
@@ -87,6 +98,19 @@
       cursor: pointer; transition: opacity 0.2s;
     }
     .btn-sm:hover { opacity: 0.85; }
+
+    .link-btn {
+      background: none; border: none; padding: 0;
+      color: #7eb8f7; font-size: 12px; cursor: pointer;
+      text-decoration: underline; margin-top: 8px;
+      display: block; text-align: center; width: 100%;
+    }
+    .link-btn:hover { color: #a0ccff; }
+
+    .auth-hint {
+      font-size: 12px; color: #888; text-align: center;
+      margin-bottom: 14px; line-height: 1.4;
+    }
 
     /* ── Main app ─────────────────────────────── */
     .app-wrap { display: none; flex: 1; flex-direction: column; overflow: hidden; }
@@ -149,35 +173,81 @@
       background: #7f1d1d; color: #fca5a5; border-radius: 8px;
       padding: 10px 20px; font-size: 13px;
       opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      max-width: 340px; text-align: center;
     }
     .toast.show { opacity: 1; }
+    .toast.success { background: #14532d; color: #86efac; }
   </style>
 </head>
 <body>
 
-<!-- ── Auth ──────────────────────────────────────────────────────────── -->
+<!-- ── Auth ──────────────────────────────────────────────────────────────── -->
 <div class="auth-wrap" id="authWrap">
   <div class="auth-box">
     <h2>WC3 Connector</h2>
-    <div class="auth-tabs">
+
+    <!-- Tabs: Войти / Регистрация -->
+    <div class="auth-tabs" id="authTabs">
       <div class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Войти</div>
       <div class="auth-tab" id="tabRegister" onclick="switchTab('register')">Регистрация</div>
     </div>
-    <input type="text" id="username" placeholder="Имя пользователя" autocomplete="off" />
-    <input type="password" id="password" placeholder="Пароль" />
-    <button class="btn btn-primary" id="authBtn" onclick="doAuth()">Войти</button>
+
+    <!-- ── Login fields ── -->
+    <div id="loginFields">
+      <input type="text" id="loginUsername" placeholder="Имя пользователя" autocomplete="off" />
+      <input type="password" id="loginPassword" placeholder="Пароль" />
+      <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">Войти</button>
+      <button class="link-btn" onclick="showForgot()">Забыли пароль?</button>
+    </div>
+
+    <!-- ── Register step 1: fill form ── -->
+    <div id="registerFields" style="display:none">
+      <input type="text" id="regUsername" placeholder="Имя пользователя (латиница, цифры, _)" autocomplete="off" />
+      <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" />
+      <input type="email" id="regEmail" placeholder="Email (для подтверждения)" />
+      <button class="btn btn-primary" id="regBtn" onclick="doRegisterStart()">Зарегистрироваться</button>
+    </div>
+
+    <!-- ── Register step 2: enter code ── -->
+    <div id="registerCodeFields" style="display:none">
+      <p class="auth-hint">Код подтверждения отправлен на <strong id="codeEmailHint"></strong>.<br>Введите его ниже (код действителен 10 минут).</p>
+      <input type="text" id="regCode" placeholder="6-значный код" maxlength="6" autocomplete="off" style="letter-spacing:4px;text-align:center;font-size:20px" />
+      <button class="btn btn-primary" id="regConfirmBtn" onclick="doRegisterConfirm()">Подтвердить</button>
+      <button class="link-btn" onclick="doRegisterStart()">Отправить код повторно</button>
+      <button class="link-btn" onclick="switchTab('register')">Изменить данные</button>
+    </div>
+
+    <!-- ── Forgot: enter email ── -->
+    <div id="forgotEmailFields" style="display:none">
+      <p class="auth-hint">Введите email, указанный при регистрации. Вышлем код для сброса пароля.</p>
+      <input type="email" id="forgotEmail" placeholder="Email" />
+      <button class="btn btn-primary" id="forgotBtn" onclick="doForgotStart()">Выслать код</button>
+      <button class="link-btn" onclick="showLogin()">Вернуться ко входу</button>
+    </div>
+
+    <!-- ── Forgot: enter code + new password ── -->
+    <div id="forgotCodeFields" style="display:none">
+      <p class="auth-hint">Введите код из письма и новый пароль.</p>
+      <input type="text" id="resetCode" placeholder="6-значный код" maxlength="6" autocomplete="off" style="letter-spacing:4px;text-align:center;font-size:20px" />
+      <input type="password" id="resetPassword" placeholder="Новый пароль (минимум 6 символов)" />
+      <input type="password" id="resetPasswordConfirm" placeholder="Повторите новый пароль" />
+      <button class="btn btn-primary" id="resetBtn" onclick="doReset()">Сохранить пароль</button>
+      <button class="link-btn" onclick="doForgotStart()">Отправить код повторно</button>
+      <button class="link-btn" onclick="showLogin()">Вернуться ко входу</button>
+    </div>
   </div>
 </div>
 
-<!-- ── Main App ───────────────────────────────────────────────────────── -->
+<!-- ── Main App ───────────────────────────────────────────────────────────── -->
 <div class="app-wrap" id="appWrap">
 
   <div class="header">
     <h1>WC3 Connector</h1>
-    <div>
+    <div class="header-status">
       <span class="status-dot" id="statusDot"></span>
       <span class="status-label" id="statusLabel">Подключение...</span>
     </div>
+    <div class="header-user" id="headerUser"></div>
   </div>
 
   <div class="game-section">
@@ -208,7 +278,7 @@
   <div class="create-panel" style="border-top: 1px solid #2a2a4a;">
     <h3>Настройки</h3>
     <div style="display:flex;gap:8px;align-items:center;">
-      <input type="text" id="wc3Path" placeholder="Путь к Warcraft III.exe" 
+      <input type="text" id="wc3Path" placeholder="Путь к Warcraft III.exe"
         style="flex:1" value="" readonly onclick="selectWC3Path()" />
       <button class="btn-sm btn-primary" onclick="selectWC3Path()">Выбрать</button>
     </div>
@@ -233,43 +303,166 @@
 <script>
   let currentTab = 'login';
   let inRoom = false;
-  let selectedMapPath = ''; 
+  let selectedMapPath = '';
+  let pendingRegUsername = '';
+  let pendingRegEmail = '';
+  let pendingForgotEmail = '';
+
+  // ── Helpers ─────────────────────────────────
+  function setLoading(btn, loading, text) {
+    btn.disabled = loading;
+    btn.textContent = loading ? '...' : text;
+  }
+
+  function showPanel(...ids) {
+    ['loginFields','registerFields','registerCodeFields','forgotEmailFields','forgotCodeFields']
+      .forEach(id => document.getElementById(id).style.display = ids.includes(id) ? '' : 'none');
+  }
+
+  function showAuthTabs(visible) {
+    document.getElementById('authTabs').style.display = visible ? '' : 'none';
+  }
 
   // ── Tab switch ──────────────────────────────
   function switchTab(tab) {
     currentTab = tab;
     document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
     document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
-    document.getElementById('authBtn').textContent = tab === 'login' ? 'Войти' : 'Зарегистрироваться';
+    showAuthTabs(true);
+    if (tab === 'login') {
+      showPanel('loginFields');
+    } else {
+      showPanel('registerFields');
+    }
   }
 
-  // ── Auth ────────────────────────────────────
-  async function doAuth() {
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
+  function showLogin() {
+    showAuthTabs(true);
+    switchTab('login');
+  }
+
+  function showForgot() {
+    showAuthTabs(false);
+    showPanel('forgotEmailFields');
+  }
+
+  // ── Login ────────────────────────────────────
+  async function doLogin() {
+    const username = document.getElementById('loginUsername').value.trim();
+    const password = document.getElementById('loginPassword').value;
     if (!username || !password) return showToast('Введите логин и пароль');
 
-    const btn = document.getElementById('authBtn');
-    btn.disabled = true;
-    btn.textContent = '...';
+    const btn = document.getElementById('loginBtn');
+    setLoading(btn, true, 'Войти');
 
-    let result;
-    if (currentTab === 'register') {
-      result = await window.connector.register(username, password);
-      if (!result.success) { btn.disabled = false; btn.textContent = 'Зарегистрироваться'; return showToast(result.error); }
-      // Auto-login after register
-      result = await window.connector.login(username, password);
-    } else {
-      result = await window.connector.login(username, password);
-    }
-
-    btn.disabled = false;
-    btn.textContent = currentTab === 'login' ? 'Войти' : 'Зарегистрироваться';
+    const result = await window.connector.login(username, password);
+    setLoading(btn, false, 'Войти');
 
     if (!result.success) return showToast(result.error);
 
+    onAuthSuccess(result.user);
+  }
+
+  // ── Register step 1 ─────────────────────────
+  async function doRegisterStart() {
+    const username = document.getElementById('regUsername').value.trim();
+    const password = document.getElementById('regPassword').value;
+    const email    = document.getElementById('regEmail').value.trim();
+    if (!username || !password || !email) return showToast('Заполните все поля');
+
+    const btn = document.getElementById('regBtn');
+    setLoading(btn, true, 'Зарегистрироваться');
+
+    const result = await window.connector.registerStart(username, password, email);
+    setLoading(btn, false, 'Зарегистрироваться');
+
+    if (!result.success) return showToast(result.error);
+
+    pendingRegUsername = username;
+    pendingRegEmail = email;
+    document.getElementById('codeEmailHint').textContent = email;
+    document.getElementById('regCode').value = '';
+    showAuthTabs(false);
+    showPanel('registerCodeFields');
+    showToast('Код отправлен на ' + email, true);
+  }
+
+  // ── Register step 2 ─────────────────────────
+  async function doRegisterConfirm() {
+    const code = document.getElementById('regCode').value.trim();
+    if (!code || code.length !== 6) return showToast('Введите 6-значный код');
+
+    const btn = document.getElementById('regConfirmBtn');
+    setLoading(btn, true, 'Подтвердить');
+
+    const result = await window.connector.registerConfirm(pendingRegUsername, code);
+    setLoading(btn, false, 'Подтвердить');
+
+    if (!result.success) return showToast(result.error);
+
+    // Auto-login after confirm
+    const loginResult = await window.connector.login(
+      pendingRegUsername,
+      document.getElementById('regPassword').value
+    );
+    if (!loginResult.success) {
+      showToast('Аккаунт создан! Войдите вручную.');
+      showLogin();
+      return;
+    }
+
+    onAuthSuccess(loginResult.user);
+  }
+
+  // ── Forgot password step 1 ───────────────────
+  async function doForgotStart() {
+    const email = document.getElementById('forgotEmail').value.trim();
+    if (!email) return showToast('Введите email');
+
+    const btn = document.getElementById('forgotBtn');
+    setLoading(btn, true, 'Выслать код');
+
+    const result = await window.connector.forgotPassword(email);
+    setLoading(btn, false, 'Выслать код');
+
+    if (!result.success) return showToast(result.error);
+
+    pendingForgotEmail = email;
+    document.getElementById('resetCode').value = '';
+    document.getElementById('resetPassword').value = '';
+    document.getElementById('resetPasswordConfirm').value = '';
+    showPanel('forgotCodeFields');
+    showToast('Если email зарегистрирован — письмо отправлено', true);
+  }
+
+  // ── Forgot password step 2 ───────────────────
+  async function doReset() {
+    const code     = document.getElementById('resetCode').value.trim();
+    const pass     = document.getElementById('resetPassword').value;
+    const passConf = document.getElementById('resetPasswordConfirm').value;
+    if (!code || code.length !== 6) return showToast('Введите 6-значный код');
+    if (!pass) return showToast('Введите новый пароль');
+    if (pass !== passConf) return showToast('Пароли не совпадают');
+
+    const btn = document.getElementById('resetBtn');
+    setLoading(btn, true, 'Сохранить пароль');
+
+    const result = await window.connector.resetPassword(pendingForgotEmail, code, pass);
+    setLoading(btn, false, 'Сохранить пароль');
+
+    if (!result.success) return showToast(result.error);
+
+    showToast('Пароль изменён! Войдите с новым паролем.', true);
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
+    showLogin();
+  }
+
+  // ── After successful auth ────────────────────
+  function onAuthSuccess(user) {
     document.getElementById('authWrap').style.display = 'none';
     document.getElementById('appWrap').style.display = 'flex';
+    document.getElementById('headerUser').textContent = user.username;
   }
 
   // ── Create room ─────────────────────────────
@@ -336,11 +529,13 @@
   }
 
   // ── Toast ───────────────────────────────────
-  function showToast(msg) {
+  let toastTimer = null;
+  function showToast(msg, success = false) {
     const t = document.getElementById('toast');
     t.textContent = msg;
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3500);
+    t.className = 'toast show' + (success ? ' success' : '');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
   }
 
   // ── Events from main process ────────────────
@@ -412,9 +607,15 @@
 
   // Enter key for auth
   document.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && document.getElementById('authWrap').style.display !== 'none') {
-      doAuth();
-    }
+    if (e.key !== 'Enter') return;
+    const wrap = document.getElementById('authWrap');
+    if (wrap.style.display === 'none') return;
+
+    if (document.getElementById('loginFields').style.display !== 'none') doLogin();
+    else if (document.getElementById('registerFields').style.display !== 'none') doRegisterStart();
+    else if (document.getElementById('registerCodeFields').style.display !== 'none') doRegisterConfirm();
+    else if (document.getElementById('forgotEmailFields').style.display !== 'none') doForgotStart();
+    else if (document.getElementById('forgotCodeFields').style.display !== 'none') doReset();
   });
 </script>
 </body>

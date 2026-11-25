@@ -2,6 +2,18 @@ export interface User {
   id: number;
   username: string;
   password_hash: string;
+  email: string | null;
+  email_verified: number; // 0 | 1
+  created_at: number;
+  last_ip: string | null;
+}
+
+export interface PendingRegistration {
+  id: number;
+  username: string;
+  password_hash: string;
+  email: string;
+  ip: string | null;
   created_at: number;
 }
 

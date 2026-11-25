@@ -340,12 +340,28 @@ function connectWSClient(token) {
     wsClient.connect();
 }
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
-electron_1.ipcMain.handle('connector:register', async (_e, username, password) => {
+electron_1.ipcMain.handle('connector:register-start', async (_e, username, password, email) => {
     try {
-        const res = await fetch(`${API_URL}/api/auth/register`, {
+        const res = await fetch(`${API_URL}/api/auth/register/start`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ username, password, email }),
+        });
+        const data = await res.json();
+        if (!res.ok)
+            return { success: false, error: data.error };
+        return { success: true };
+    }
+    catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+electron_1.ipcMain.handle('connector:register-confirm', async (_e, username, code) => {
+    try {
+        const res = await fetch(`${API_URL}/api/auth/register/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, code }),
         });
         const data = await res.json();
         if (!res.ok)
@@ -385,6 +401,38 @@ electron_1.ipcMain.handle('connector:logout', async () => {
     cleanup();
     currentUserId = null;
     return { success: true };
+});
+electron_1.ipcMain.handle('connector:forgot-password', async (_e, email) => {
+    try {
+        const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (!res.ok)
+            return { success: false, error: data.error };
+        return { success: true };
+    }
+    catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+electron_1.ipcMain.handle('connector:reset-password', async (_e, email, code, newPassword) => {
+    try {
+        const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code, newPassword }),
+        });
+        const data = await res.json();
+        if (!res.ok)
+            return { success: false, error: data.error };
+        return { success: true };
+    }
+    catch (err) {
+        return { success: false, error: err.message };
+    }
 });
 electron_1.ipcMain.handle('connector:create-room', async (_e, name, map) => {
     if (!wsClient?.isConnected()) {

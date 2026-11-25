@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 contextBridge.exposeInMainWorld('connector', {
-  register: (username: string, password: string) =>
-    ipcRenderer.invoke('connector:register', username, password),
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  registerStart: (username: string, password: string, email: string) =>
+    ipcRenderer.invoke('connector:register-start', username, password, email),
+
+  registerConfirm: (username: string, code: string) =>
+    ipcRenderer.invoke('connector:register-confirm', username, code),
 
   login: (username: string, password: string) =>
     ipcRenderer.invoke('connector:login', username, password),
@@ -10,6 +14,13 @@ contextBridge.exposeInMainWorld('connector', {
   logout: () =>
     ipcRenderer.invoke('connector:logout'),
 
+  forgotPassword: (email: string) =>
+    ipcRenderer.invoke('connector:forgot-password', email),
+
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    ipcRenderer.invoke('connector:reset-password', email, code, newPassword),
+
+  // ── Rooms ─────────────────────────────────────────────────────────────────
   createRoom: (name: string, map: string) =>
     ipcRenderer.invoke('connector:create-room', name, map),
 
@@ -19,6 +30,7 @@ contextBridge.exposeInMainWorld('connector', {
   leaveRoom: () =>
     ipcRenderer.invoke('connector:leave-room'),
 
+  // ── File / Launch ─────────────────────────────────────────────────────────
   selectWC3Path: () =>
     ipcRenderer.invoke('connector:select-wc3-path'),
 
@@ -28,7 +40,7 @@ contextBridge.exposeInMainWorld('connector', {
   launchWC3: (path: string) =>
     ipcRenderer.invoke('connector:launch-wc3', path),
 
-  // Events from main process
+  // ── Events from main process ──────────────────────────────────────────────
   onStatus: (cb: (data: { connected: boolean }) => void) =>
     ipcRenderer.on('connector:status', (_e, data) => cb(data)),
 

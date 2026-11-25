@@ -334,12 +334,27 @@ function connectWSClient(token: string) {
 
 // ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
-ipcMain.handle('connector:register', async (_e, username: string, password: string) => {
+ipcMain.handle('connector:register-start', async (_e, username: string, password: string, email: string) => {
   try {
-    const res = await fetch(`${API_URL}/api/auth/register`, {
+    const res = await fetch(`${API_URL}/api/auth/register/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, email }),
+    });
+    const data: any = await res.json();
+    if (!res.ok) return { success: false, error: data.error };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('connector:register-confirm', async (_e, username: string, code: string) => {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/register/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, code }),
     });
     const data: any = await res.json();
     if (!res.ok) return { success: false, error: data.error };
@@ -382,6 +397,36 @@ ipcMain.handle('connector:logout', async () => {
   cleanup();
   currentUserId = null;
   return { success: true };
+});
+
+ipcMain.handle('connector:forgot-password', async (_e, email: string) => {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data: any = await res.json();
+    if (!res.ok) return { success: false, error: data.error };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('connector:reset-password', async (_e, email: string, code: string, newPassword: string) => {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, newPassword }),
+    });
+    const data: any = await res.json();
+    if (!res.ok) return { success: false, error: data.error };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('connector:create-room', async (_e, name: string, map: string) => {
