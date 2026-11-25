@@ -400,18 +400,7 @@
 
     if (!result.success) return showToast(result.error);
 
-    // Auto-login after confirm
-    const loginResult = await window.connector.login(
-      pendingRegUsername,
-      document.getElementById('regPassword').value
-    );
-    if (!loginResult.success) {
-      showToast('Аккаунт создан! Войдите вручную.');
-      showLogin();
-      return;
-    }
-
-    onAuthSuccess(loginResult.user);
+    onAuthSuccess(result.user);
   }
 
   // ── Forgot password step 1 ───────────────────

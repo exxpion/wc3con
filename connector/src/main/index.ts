@@ -358,7 +358,20 @@ ipcMain.handle('connector:register-confirm', async (_e, username: string, code: 
     });
     const data: any = await res.json();
     if (!res.ok) return { success: false, error: data.error };
-    return { success: true, user: data.user };
+
+    const { token, user } = data;
+
+    cleanup();
+
+    const networkResult = await startNetworkStack();
+    if (!networkResult.success) {
+      return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
+    }
+
+    currentUserId = user.id;
+    connectWSClient(token);
+
+    return { success: true, user };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
