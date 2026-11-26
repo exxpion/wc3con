@@ -17,7 +17,6 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-  CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
   CREATE TABLE IF NOT EXISTS pending_registrations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,11 +40,30 @@ db.exec(`
 `);
 
 // ── Migrations (for existing DBs from before email verification) ─────────────
-// ALTER TABLE ADD COLUMN is a no-op if the column already exists (error is silently caught).
-try { db.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch {}
-try { db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0'); } catch {}
-// Ensure the unique constraint on email exists (separate index because ALTER TABLE can't add UNIQUE).
-try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)'); } catch {}
+function runMigrations() {
+  try {
+    const cols = db.prepare("PRAGMA table_info(users)").all() as any[];
+    const hasEmail = cols.some(col => col.name === 'email');
+    const hasEmailVerified = cols.some(col => col.name === 'email_verified');
+
+    if (!hasEmail) {
+      console.log('[DB] Adding email column to users table');
+      db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+    }
+    if (!hasEmailVerified) {
+      console.log('[DB] Adding email_verified column to users table');
+      db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
+    }
+
+    // Create email index after ensuring column exists
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)');
+  } catch (err: any) {
+    console.error('[DB] Migration error:', err.message);
+    throw err;
+  }
+}
+
+runMigrations();
 
 // ── Users ───────────────────────────────────────────────────────────────────
 
