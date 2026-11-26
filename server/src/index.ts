@@ -6,6 +6,7 @@ import jwt from '@fastify/jwt';
 import { setupAuthRoutes } from './auth/index.js';
 import { setupWebSocketServer } from './ws/index.js';
 import { startDbCleanup } from './db/index.js';
+import { initMailer } from './mailer.js';
 
 // Load a local .env file without adding a runtime dependency. Existing process
 // environment variables always take precedence.
@@ -16,6 +17,9 @@ if (existsSync(envPath)) {
     if (match && process.env[match[1]] === undefined) process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '');
   }
 }
+
+// Init mailer after .env is loaded
+initMailer();
 
 
 const app = Fastify({

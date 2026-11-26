@@ -1,23 +1,42 @@
 import nodemailer from 'nodemailer';
 
-const smtpConfigured =
-  process.env.SMTP_HOST &&
-  process.env.SMTP_USER &&
-  process.env.SMTP_PASS;
+function createTransporter() {
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
 
-const transporter = smtpConfigured
-  ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
-  : null;
+  if (!host || !user || !pass) {
+    console.warn('[MAILER] SMTP not configured (SMTP_HOST/SMTP_USER/SMTP_PASS missing) — codes will be logged to console only');
+    return null;
+  }
 
-const FROM = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'noreply@wc3con.local';
+  const port   = Number(process.env.SMTP_PORT ?? 587);
+  const secure = process.env.SMTP_SECURE === 'true';
+
+  console.log(`[MAILER] Configuring SMTP: ${host}:${port} secure=${secure} user=${user}`);
+
+  const t = nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
+
+  // Verify connection at startup so errors appear in logs immediately
+  t.verify().then(() => {
+    console.log('[MAILER] SMTP connection verified OK');
+  }).catch((err: any) => {
+    console.error('[MAILER] SMTP connection FAILED:', err.message);
+  });
+
+  return t;
+}
+
+// Called from index.ts after .env is loaded
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
+
+export function initMailer() {
+  transporter = createTransporter();
+}
+
+function getFrom() {
+  return process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'noreply@wc3con.local';
+}
 
 export async function sendVerificationCode(email: string, code: string): Promise<void> {
   const subject = 'WC3 Connector — подтверждение регистрации';
@@ -34,7 +53,9 @@ export async function sendVerificationCode(email: string, code: string): Promise
     return;
   }
 
-  await transporter.sendMail({ from: FROM, to: email, subject, html });
+  console.log(`[MAILER] Sending verification code to ${email}`);
+  await transporter.sendMail({ from: getFrom(), to: email, subject, html });
+  console.log(`[MAILER] Verification code sent to ${email}`);
 }
 
 export async function sendPasswordResetCode(email: string, code: string): Promise<void> {
@@ -52,5 +73,7 @@ export async function sendPasswordResetCode(email: string, code: string): Promis
     return;
   }
 
-  await transporter.sendMail({ from: FROM, to: email, subject, html });
+  console.log(`[MAILER] Sending password reset code to ${email}`);
+  await transporter.sendMail({ from: getFrom(), to: email, subject, html });
+  console.log(`[MAILER] Password reset code sent to ${email}`);
 }
