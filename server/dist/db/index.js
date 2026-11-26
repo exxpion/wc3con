@@ -35,6 +35,21 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_codes_lookup ON verification_codes(type, identifier);
 `);
+// ── Migrations (for existing DBs from before email verification) ─────────────
+// ALTER TABLE ADD COLUMN is a no-op if the column already exists (error is silently caught).
+try {
+    db.exec('ALTER TABLE users ADD COLUMN email TEXT');
+}
+catch { }
+try {
+    db.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0');
+}
+catch { }
+// Ensure the unique constraint on email exists (separate index because ALTER TABLE can't add UNIQUE).
+try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email)');
+}
+catch { }
 // ── Users ───────────────────────────────────────────────────────────────────
 const stmtGetByUsername = db.prepare('SELECT * FROM users WHERE username = ?');
 const stmtGetByEmail = db.prepare('SELECT * FROM users WHERE email = ?');
