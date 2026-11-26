@@ -42,6 +42,8 @@ export interface ConnectedClient {
   disconnect_deadline?: number;
   disconnect_timer?: ReturnType<typeof setTimeout>;
   expired_room_id?: string;
+  // P2P: external UDP endpoint discovered via UDP discovery socket
+  udp_endpoint?: { ip: string; port: number };
 }
 
 export interface AuthPayload {
@@ -63,5 +65,9 @@ export enum WSMessageType {
   GAME_DATA = 'game_data', ROOM_GAMEINFO = 'room_gameinfo',
   ROOM_GAMEINFO_LOST = 'room_gameinfo_lost', ROOM_CLOSED = 'room_closed', TUNNEL = 'tunnel',
   GAME_RELAY_PAUSED = 'game_relay_paused', GAME_RELAY_RESUMED = 'game_relay_resumed',
+  // P2P hole punching
+  P2P_REGISTER = 'p2p_register',   // client → server: {udp_port: number}
+  P2P_CONNECT  = 'p2p_connect',    // server → client: {peer_id: number, peer_ip: string, peer_port: number}
+  P2P_STATUS   = 'p2p_status',     // client → server: {peer_id: number, success: boolean}
   ERROR = 'error',
 }

@@ -16,6 +16,16 @@ const expiredRoomByUser = new Map<number, string>();
 const MAX_TUNNEL_CHUNK = 700_000;
 const MAX_GAMEINFO_BASE64 = 4096;
 
+// ── P2P UDP endpoint registry ─────────────────────────────────────────────────
+// Called from index.ts when a UDP discovery packet arrives.
+export function registerUdpEndpoint(userId: number, ip: string, port: number): void {
+  const client = clients.get(userId);
+  if (client) {
+    client.udp_endpoint = { ip, port };
+    console.log(`[P2P] Registered UDP endpoint for user ${userId}: ${ip}:${port}`);
+  }
+}
+
 export function setupWebSocketServer(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000 });
 
@@ -95,8 +105,27 @@ export function setupWebSocketServer(app: FastifyInstance) {
     broadcastRoomList();
   }
 
-  function maybeResumeRelay(roomId: string): void {
-    const room = rooms.get(roomId);
+  /** Send P2P_CONNECT to guest and host if both have registered UDP endpoints */
+  function tryP2PConnect(guest: ConnectedClient, hostUserId: number): void {
+    const host = clients.get(hostUserId);
+    if (!host?.connected || !guest.connected) return;
+    const gEp = guest.udp_endpoint;
+    const hEp = host.udp_endpoint;
+    if (!gEp?.ip || !hEp?.ip) return; // endpoints not yet discovered via UDP
+    // Tell guest to connect to host's UDP endpoint
+    send(guest.ws, {
+      type: WSMessageType.P2P_CONNECT,
+      payload: { peer_id: host.user_id, peer_ip: hEp.ip, peer_port: hEp.port },
+    });
+    // Tell host to connect to guest's UDP endpoint
+    send(host.ws, {
+      type: WSMessageType.P2P_CONNECT,
+      payload: { peer_id: guest.user_id, peer_ip: gEp.ip, peer_port: gEp.port },
+    });
+    console.log(`[P2P] Exchanged endpoints: host ${host.user_id}(${hEp.ip}:${hEp.port}) <-> guest ${guest.user_id}(${gEp.ip}:${gEp.port})`);
+  }
+
+  function maybeResumeRelay(roomId: string): void {    const room = rooms.get(roomId);
     if (!room || room.game_session_status !== 'relay_paused') return;
     const members = getClientsInRoom(roomId);
     if (members.some((member) => !member.connected)) return;
@@ -313,6 +342,8 @@ export function setupWebSocketServer(app: FastifyInstance) {
           payload: { action: 'player_joined', userId: currentClient.user_id, username: currentClient.username },
         });
         broadcastRoomList();
+        // ── P2P: exchange UDP endpoints with host ──
+        tryP2PConnect(currentClient, room.host_user_id);
         break;
       }
       case WSMessageType.LEAVE_ROOM:
@@ -378,6 +409,35 @@ export function setupWebSocketServer(app: FastifyInstance) {
             type: WSMessageType.TUNNEL,
             payload: { from: currentClient.user_id, conn: payload.conn, op: payload.op, data: payload.data },
           });
+        }
+        break;
+      }
+      case WSMessageType.P2P_REGISTER: {
+        // Client is telling us their local UDP port; IP comes from the UDP discovery socket.
+        // If UDP discovery already ran, udp_endpoint is set. If not, we store the port and
+        // wait for the UDP packet to fill in the IP.
+        if (payload && Number.isInteger(payload.udp_port) && payload.udp_port > 0) {
+          if (!currentClient.udp_endpoint) {
+            // UDP discovery hasn't fired yet; pre-create with unknown IP so we can fill later
+            currentClient.udp_endpoint = { ip: '', port: payload.udp_port };
+          } else {
+            // Update port in case it changed
+            currentClient.udp_endpoint.port = payload.udp_port;
+          }
+          // If in a room, try to exchange endpoints with the other side now
+          if (currentClient.room_id) {
+            const r = rooms.get(currentClient.room_id);
+            if (r) {
+              if (currentClient.is_host) {
+                // Notify all guests in room
+                for (const member of getClientsInRoom(currentClient.room_id)) {
+                  if (!member.is_host) tryP2PConnect(member, currentClient.user_id);
+                }
+              } else {
+                tryP2PConnect(currentClient, r.host_user_id);
+              }
+            }
+          }
         }
         break;
       }

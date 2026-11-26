@@ -18,6 +18,10 @@ export var WSMessageType;
     WSMessageType["TUNNEL"] = "tunnel";
     WSMessageType["GAME_RELAY_PAUSED"] = "game_relay_paused";
     WSMessageType["GAME_RELAY_RESUMED"] = "game_relay_resumed";
+    // P2P hole punching
+    WSMessageType["P2P_REGISTER"] = "p2p_register";
+    WSMessageType["P2P_CONNECT"] = "p2p_connect";
+    WSMessageType["P2P_STATUS"] = "p2p_status";
     WSMessageType["ERROR"] = "error";
 })(WSMessageType || (WSMessageType = {}));
 //# sourceMappingURL=index.js.map
