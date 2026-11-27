@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('connector', {
   launchWC3: (path: string) =>
     ipcRenderer.invoke('connector:launch-wc3', path),
 
+  openChat: () =>
+    ipcRenderer.invoke('chat:open'),
+
   // ── Events from main process ──────────────────────────────────────────────
   onStatus: (cb: (data: { connected: boolean }) => void) =>
     ipcRenderer.on('connector:status', (_e, data) => cb(data)),

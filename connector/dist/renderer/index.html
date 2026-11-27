@@ -7,48 +7,66 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    :root {
+      --bg:        #0c0c0c;
+      --bg2:       #161616;
+      --bg3:       #1e1e1e;
+      --border:    #2e2e2e;
+      --gold:      #c9a227;
+      --gold-dim:  #a07c18;
+      --gold-bg:   rgba(201,162,39,0.08);
+      --text:      #e0d8c8;
+      --text-dim:  #888;
+      --green:     #4caf67;
+      --red:       #d94040;
+      --red-bg:    rgba(217,64,64,0.12);
+    }
+
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
-      background: #0f0f1a;
-      color: #e0e0e0;
+      background: var(--bg);
+      color: var(--text);
       height: 100vh;
       display: flex;
       flex-direction: column;
     }
 
-    /* ── Header ───────────────────────────────── */
+    /* ── Header ─────────────────────────────── */
     .header {
-      background: #1a1a2e;
-      padding: 12px 20px;
+      background: var(--bg2);
+      padding: 11px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border-bottom: 1px solid #2a2a4a;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
-    .header h1 { font-size: 18px; color: #7eb8f7; }
-    .header-status {
-      display: flex;
-      align-items: center;
+    .header h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--gold);
     }
+    .header-status { display: flex; align-items: center; }
     .header-user {
       font-size: 13px;
-      color: #7eb8f7;
+      color: var(--gold);
       font-weight: 600;
       min-width: 80px;
       text-align: right;
     }
     .status-dot {
       display: inline-block;
-      width: 10px; height: 10px;
+      width: 8px; height: 8px;
       border-radius: 50%;
-      background: #555;
+      background: #444;
       margin-right: 6px;
       transition: background 0.3s;
     }
-    .status-dot.connected { background: #50fa7b; }
-    .status-label { font-size: 13px; color: #aaa; }
+    .status-dot.connected { background: var(--green); }
+    .status-label { font-size: 12px; color: var(--text-dim); }
 
-    /* ── Auth form ────────────────────────────── */
+    /* ── Auth form ───────────────────────────── */
     .auth-wrap {
       display: flex;
       flex: 1;
@@ -56,127 +74,153 @@
       justify-content: center;
     }
     .auth-box {
-      background: #1a1a2e;
-      border: 1px solid #2a2a4a;
+      background: var(--bg2);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 32px 36px;
       width: 360px;
     }
-    .auth-box h2 { font-size: 20px; margin-bottom: 20px; color: #7eb8f7; text-align: center; }
+    .auth-box h2 {
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: var(--gold);
+      text-align: center;
+      letter-spacing: 0.5px;
+    }
     .auth-tabs { display: flex; margin-bottom: 20px; }
     .auth-tab {
       flex: 1; padding: 8px; text-align: center; cursor: pointer;
-      border: 1px solid #2a2a4a; color: #aaa; font-size: 14px;
-      transition: all 0.2s;
+      border: 1px solid var(--border); color: var(--text-dim); font-size: 14px;
+      transition: all 0.2s; background: var(--bg3);
     }
     .auth-tab:first-child { border-radius: 6px 0 0 6px; }
     .auth-tab:last-child  { border-radius: 0 6px 6px 0; }
-    .auth-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .auth-tab.active { background: var(--gold); border-color: var(--gold); color: #0c0c0c; font-weight: 600; }
 
     input {
       width: 100%; padding: 10px 12px;
-      background: #0f0f1a; border: 1px solid #2a2a4a;
-      border-radius: 6px; color: #e0e0e0; font-size: 14px;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 14px;
       margin-bottom: 10px; outline: none;
       transition: border-color 0.2s;
     }
-    input:focus { border-color: #2563eb; }
+    input:focus { border-color: var(--gold); }
+    input[readonly] { cursor: pointer; }
 
     .btn {
       width: 100%; padding: 10px;
       border: none; border-radius: 6px;
       font-size: 14px; cursor: pointer;
       transition: opacity 0.2s;
+      font-weight: 600;
     }
     .btn:hover { opacity: 0.85; }
-    .btn-primary { background: #2563eb; color: #fff; }
-    .btn-success { background: #16a34a; color: #fff; }
-    .btn-danger  { background: #dc2626; color: #fff; margin-top: 6px; }
+    .btn-primary { background: var(--gold); color: #0c0c0c; }
+    .btn-success { background: var(--green); color: #0c0c0c; }
+    .btn-danger  { background: var(--red); color: #fff; margin-top: 6px; }
+
     .btn-sm {
       padding: 6px 14px; font-size: 13px;
       border: none; border-radius: 5px;
       cursor: pointer; transition: opacity 0.2s;
+      font-weight: 600; white-space: nowrap;
     }
     .btn-sm:hover { opacity: 0.85; }
+    .btn-sm.btn-primary { background: var(--gold); color: #0c0c0c; }
+    .btn-sm.btn-success { background: var(--green); color: #0c0c0c; }
+    .btn-sm.btn-danger  { background: var(--red); color: #fff; }
+    .btn-sm.btn-chat    { background: var(--bg3); color: var(--gold); border: 1px solid var(--gold); }
+    .btn-sm.btn-chat:hover { background: var(--gold-bg); }
 
     .link-btn {
       background: none; border: none; padding: 0;
-      color: #7eb8f7; font-size: 12px; cursor: pointer;
+      color: var(--gold); font-size: 12px; cursor: pointer;
       text-decoration: underline; margin-top: 8px;
       display: block; text-align: center; width: 100%;
+      opacity: 0.8;
     }
-    .link-btn:hover { color: #a0ccff; }
+    .link-btn:hover { opacity: 1; }
 
     .auth-hint {
-      font-size: 12px; color: #888; text-align: center;
+      font-size: 12px; color: var(--text-dim); text-align: center;
       margin-bottom: 14px; line-height: 1.4;
     }
 
-    /* ── Main app ─────────────────────────────── */
+    /* ── Main app ────────────────────────────── */
     .app-wrap { display: none; flex: 1; flex-direction: column; overflow: hidden; }
 
     /* ── Game list ───────────────────────────── */
     .game-section { flex: 1; display: flex; flex-direction: column; padding: 16px 20px; overflow: hidden; }
     .section-title {
-      font-size: 15px; font-weight: 600; color: #7eb8f7;
+      font-size: 14px; font-weight: 700; color: var(--gold);
       margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+      text-transform: uppercase; letter-spacing: 0.5px;
     }
     .game-count {
-      background: #2563eb; color: #fff;
-      border-radius: 10px; padding: 1px 7px; font-size: 12px;
+      background: var(--gold); color: #0c0c0c;
+      border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700;
     }
     .game-list { flex: 1; overflow-y: auto; }
     .game-list::-webkit-scrollbar { width: 4px; }
-    .game-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+    .game-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
     .game-card {
-      background: #1a1a2e; border: 1px solid #2a2a4a;
+      background: var(--bg2); border: 1px solid var(--border);
       border-radius: 8px; padding: 12px 14px;
       margin-bottom: 8px; display: flex;
       align-items: center; justify-content: space-between;
       transition: border-color 0.2s;
     }
-    .game-card:hover { border-color: #2563eb; }
+    .game-card:hover { border-color: var(--gold-dim); }
     .game-info { flex: 1; min-width: 0; }
-    .game-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .game-meta { font-size: 12px; color: #888; margin-top: 3px; }
-    .game-slots { font-size: 13px; color: #50fa7b; margin-left: 12px; white-space: nowrap; }
-    .btn-join { background: #2563eb; color: #fff; }
-    .btn-join:disabled { background: #555; cursor: not-allowed; opacity: 1; }
+    .game-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .game-meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+    .game-slots { font-size: 13px; color: var(--green); margin-left: 12px; white-space: nowrap; }
+    .btn-join { background: var(--gold); color: #0c0c0c; }
+    .btn-join:disabled { background: #333; color: #666; cursor: not-allowed; opacity: 1; }
 
     .empty-state {
-      text-align: center; color: #555; padding: 40px 20px;
+      text-align: center; color: #444; padding: 40px 20px;
       font-size: 14px; line-height: 1.6;
     }
 
     /* ── Create room panel ───────────────────── */
     .create-panel {
-      background: #1a1a2e; border-top: 1px solid #2a2a4a;
-      padding: 14px 20px;
+      background: var(--bg2); border-top: 1px solid var(--border);
+      padding: 12px 20px;
     }
-    .create-panel h3 { font-size: 14px; color: #7eb8f7; margin-bottom: 10px; }
+    .create-panel h3 {
+      font-size: 12px; font-weight: 700; color: var(--gold);
+      margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
     .create-row { display: flex; gap: 8px; }
     .create-row input { margin-bottom: 0; }
 
-    /* ── In-room state ───────────────────────── */
+    /* ── In-room banner ──────────────────────── */
     .in-room-banner {
-      background: #14532d; border-top: 1px solid #16a34a;
+      background: var(--bg2);
+      border-top: 2px solid var(--gold);
       padding: 12px 20px; display: none;
       align-items: center; justify-content: space-between;
     }
-    .in-room-banner .room-info { font-size: 14px; color: #86efac; }
-    .in-room-banner .hint { font-size: 12px; color: #4ade80; margin-top: 2px; }
+    .in-room-banner .room-info {
+      font-size: 14px; font-weight: 600; color: var(--gold);
+    }
+    .in-room-banner .hint {
+      font-size: 12px; color: var(--text-dim); margin-top: 2px;
+    }
 
-    /* ── Error toast ─────────────────────────── */
+    /* ── Toast ───────────────────────────────── */
     .toast {
       position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-      background: #7f1d1d; color: #fca5a5; border-radius: 8px;
+      background: var(--red-bg); color: #f88; border: 1px solid var(--red);
+      border-radius: 8px;
       padding: 10px 20px; font-size: 13px;
       opacity: 0; transition: opacity 0.3s; pointer-events: none;
       max-width: 340px; text-align: center;
     }
     .toast.show { opacity: 1; }
-    .toast.success { background: #14532d; color: #86efac; }
+    .toast.success { background: rgba(76,175,103,0.12); color: #7de0a0; border-color: var(--green); }
   </style>
 </head>
 <body>
@@ -186,13 +230,11 @@
   <div class="auth-box">
     <h2>WC3 Connector</h2>
 
-    <!-- Tabs: Войти / Регистрация -->
     <div class="auth-tabs" id="authTabs">
       <div class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Войти</div>
       <div class="auth-tab" id="tabRegister" onclick="switchTab('register')">Регистрация</div>
     </div>
 
-    <!-- ── Login fields ── -->
     <div id="loginFields">
       <input type="text" id="loginUsername" placeholder="Имя пользователя" autocomplete="off" />
       <input type="password" id="loginPassword" placeholder="Пароль" />
@@ -200,7 +242,6 @@
       <button class="link-btn" onclick="showForgot()">Забыли пароль?</button>
     </div>
 
-    <!-- ── Register step 1: fill form ── -->
     <div id="registerFields" style="display:none">
       <input type="text" id="regUsername" placeholder="Имя пользователя (латиница, цифры, _)" autocomplete="off" />
       <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" />
@@ -208,7 +249,6 @@
       <button class="btn btn-primary" id="regBtn" onclick="doRegisterStart()">Зарегистрироваться</button>
     </div>
 
-    <!-- ── Register step 2: enter code ── -->
     <div id="registerCodeFields" style="display:none">
       <p class="auth-hint">Код подтверждения отправлен на <strong id="codeEmailHint"></strong>.<br>Введите его ниже (код действителен 10 минут).</p>
       <input type="text" id="regCode" placeholder="6-значный код" maxlength="6" autocomplete="off" style="letter-spacing:4px;text-align:center;font-size:20px" />
@@ -217,7 +257,6 @@
       <button class="link-btn" onclick="switchTab('register')">Изменить данные</button>
     </div>
 
-    <!-- ── Forgot: enter email ── -->
     <div id="forgotEmailFields" style="display:none">
       <p class="auth-hint">Введите email, указанный при регистрации. Вышлем код для сброса пароля.</p>
       <input type="email" id="forgotEmail" placeholder="Email" />
@@ -225,7 +264,6 @@
       <button class="link-btn" onclick="showLogin()">Вернуться ко входу</button>
     </div>
 
-    <!-- ── Forgot: enter code + new password ── -->
     <div id="forgotCodeFields" style="display:none">
       <p class="auth-hint">Введите код из письма и новый пароль.</p>
       <input type="text" id="resetCode" placeholder="6-значный код" maxlength="6" autocomplete="off" style="letter-spacing:4px;text-align:center;font-size:20px" />
@@ -242,7 +280,7 @@
 <div class="app-wrap" id="appWrap">
 
   <div class="header">
-    <h1>WC3 Connector</h1>
+    <h1>⚔ WC3 Connector</h1>
     <div class="header-status">
       <span class="status-dot" id="statusDot"></span>
       <span class="status-label" id="statusLabel">Подключение...</span>
@@ -256,30 +294,29 @@
       <span class="game-count" id="gameCount">0</span>
     </div>
     <div class="game-list" id="gameList">
-      <div class="empty-state">
-        Нет активных игр.<br>Создайте игру или подождите пока кто-нибудь создаст.
-      </div>
+      <div class="empty-state">Нет активных игр.<br>Создайте игру или подождите.</div>
     </div>
   </div>
 
-  <!-- In-room banner -->
+  <!-- In-room banner — показывается только когда в комнате -->
   <div class="in-room-banner" id="inRoomBanner">
     <div>
-      <div class="room-info">Вы в комнате</div>
-      <div class="hint">Ожидаем создания LAN-игры хостом в Warcraft III 1.26</div>
+      <div class="room-info" id="bannerTitle">Вы в комнате</div>
+      <div class="hint" id="bannerHint">Ожидаем создания LAN-игры хостом в Warcraft III 1.26</div>
     </div>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-sm btn-chat" onclick="openChat()">💬 Чат</button>
       <button class="btn-sm btn-success" onclick="launchWC3()">Запустить WC3</button>
-      <button class="btn-sm btn-danger" onclick="doLeave()">Выйти из игры</button>
+      <button class="btn-sm btn-danger" onclick="doLeave()">Выйти</button>
     </div>
   </div>
 
-  <!-- Settings panel -->
-  <div class="create-panel" style="border-top: 1px solid #2a2a4a;">
+  <!-- Settings -->
+  <div class="create-panel" style="border-top: 1px solid var(--border);">
     <h3>Настройки</h3>
     <div style="display:flex;gap:8px;align-items:center;">
       <input type="text" id="wc3Path" placeholder="Путь к Warcraft III.exe"
-        style="flex:1" value="" readonly onclick="selectWC3Path()" />
+        style="flex:1;margin-bottom:0" value="" readonly onclick="selectWC3Path()" />
       <button class="btn-sm btn-primary" onclick="selectWC3Path()">Выбрать</button>
     </div>
   </div>
@@ -308,7 +345,6 @@
   let pendingRegEmail = '';
   let pendingForgotEmail = '';
 
-  // ── Helpers ─────────────────────────────────
   function setLoading(btn, loading, text) {
     btn.disabled = loading;
     btn.textContent = loading ? '...' : text;
@@ -323,61 +359,39 @@
     document.getElementById('authTabs').style.display = visible ? '' : 'none';
   }
 
-  // ── Tab switch ──────────────────────────────
   function switchTab(tab) {
     currentTab = tab;
     document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
     document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
     showAuthTabs(true);
-    if (tab === 'login') {
-      showPanel('loginFields');
-    } else {
-      showPanel('registerFields');
-    }
+    showPanel(tab === 'login' ? 'loginFields' : 'registerFields');
   }
 
-  function showLogin() {
-    showAuthTabs(true);
-    switchTab('login');
-  }
+  function showLogin() { showAuthTabs(true); switchTab('login'); }
+  function showForgot() { showAuthTabs(false); showPanel('forgotEmailFields'); }
 
-  function showForgot() {
-    showAuthTabs(false);
-    showPanel('forgotEmailFields');
-  }
-
-  // ── Login ────────────────────────────────────
   async function doLogin() {
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value;
     if (!username || !password) return showToast('Введите логин и пароль');
-
     const btn = document.getElementById('loginBtn');
     setLoading(btn, true, 'Войти');
-
     const result = await window.connector.login(username, password);
     setLoading(btn, false, 'Войти');
-
     if (!result.success) return showToast(result.error);
-
     onAuthSuccess(result.user);
   }
 
-  // ── Register step 1 ─────────────────────────
   async function doRegisterStart() {
     const username = document.getElementById('regUsername').value.trim();
     const password = document.getElementById('regPassword').value;
     const email    = document.getElementById('regEmail').value.trim();
     if (!username || !password || !email) return showToast('Заполните все поля');
-
     const btn = document.getElementById('regBtn');
     setLoading(btn, true, 'Зарегистрироваться');
-
     const result = await window.connector.registerStart(username, password, email);
     setLoading(btn, false, 'Зарегистрироваться');
-
     if (!result.success) return showToast(result.error);
-
     pendingRegUsername = username;
     pendingRegEmail = email;
     document.getElementById('codeEmailHint').textContent = email;
@@ -387,35 +401,25 @@
     showToast('Код отправлен на ' + email, true);
   }
 
-  // ── Register step 2 ─────────────────────────
   async function doRegisterConfirm() {
     const code = document.getElementById('regCode').value.trim();
     if (!code || code.length !== 6) return showToast('Введите 6-значный код');
-
     const btn = document.getElementById('regConfirmBtn');
     setLoading(btn, true, 'Подтвердить');
-
     const result = await window.connector.registerConfirm(pendingRegUsername, code);
     setLoading(btn, false, 'Подтвердить');
-
     if (!result.success) return showToast(result.error);
-
     onAuthSuccess(result.user);
   }
 
-  // ── Forgot password step 1 ───────────────────
   async function doForgotStart() {
     const email = document.getElementById('forgotEmail').value.trim();
     if (!email) return showToast('Введите email');
-
     const btn = document.getElementById('forgotBtn');
     setLoading(btn, true, 'Выслать код');
-
     const result = await window.connector.forgotPassword(email);
     setLoading(btn, false, 'Выслать код');
-
     if (!result.success) return showToast(result.error);
-
     pendingForgotEmail = email;
     document.getElementById('resetCode').value = '';
     document.getElementById('resetPassword').value = '';
@@ -424,7 +428,6 @@
     showToast('Если email зарегистрирован — письмо отправлено', true);
   }
 
-  // ── Forgot password step 2 ───────────────────
   async function doReset() {
     const code     = document.getElementById('resetCode').value.trim();
     const pass     = document.getElementById('resetPassword').value;
@@ -432,29 +435,23 @@
     if (!code || code.length !== 6) return showToast('Введите 6-значный код');
     if (!pass) return showToast('Введите новый пароль');
     if (pass !== passConf) return showToast('Пароли не совпадают');
-
     const btn = document.getElementById('resetBtn');
     setLoading(btn, true, 'Сохранить пароль');
-
     const result = await window.connector.resetPassword(pendingForgotEmail, code, pass);
     setLoading(btn, false, 'Сохранить пароль');
-
     if (!result.success) return showToast(result.error);
-
     showToast('Пароль изменён! Войдите с новым паролем.', true);
     document.getElementById('loginUsername').value = '';
     document.getElementById('loginPassword').value = '';
     showLogin();
   }
 
-  // ── After successful auth ────────────────────
   function onAuthSuccess(user) {
     document.getElementById('authWrap').style.display = 'none';
     document.getElementById('appWrap').style.display = 'flex';
     document.getElementById('headerUser').textContent = user.username;
   }
 
-  // ── Create room ─────────────────────────────
   async function selectMapPath() {
     const result = await window.connector.selectMapPath();
     if (result.success && result.path) {
@@ -469,33 +466,31 @@
     const name = document.getElementById('roomName').value.trim();
     const map  = document.getElementById('mapName').value.trim();
     if (!name || !map) return showToast('Введите название и карту');
-
     const result = await window.connector.createRoom(name, map);
     if (!result.success) showToast(result.error);
   }
 
-  // ── Join room ───────────────────────────────
   async function doJoin(roomId) {
     if (inRoom) return showToast('Сначала выйдите из текущей игры');
     const result = await window.connector.joinRoom(roomId);
     if (!result.success) showToast(result.error);
   }
 
-  // ── Leave room ──────────────────────────────
   async function doLeave() {
     await window.connector.leaveRoom();
   }
 
-  // ── Render game list ────────────────────────
+  function openChat() {
+    window.connector.openChat();
+  }
+
   function renderRooms(rooms) {
     const list = document.getElementById('gameList');
     document.getElementById('gameCount').textContent = rooms.length;
-
     if (rooms.length === 0) {
       list.innerHTML = '<div class="empty-state">Нет активных игр.<br>Создайте игру или подождите.</div>';
       return;
     }
-
     list.innerHTML = rooms.map(room => {
       const full = room.current_players >= room.max_players;
       return `
@@ -517,7 +512,6 @@
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
-  // ── Toast ───────────────────────────────────
   let toastTimer = null;
   function showToast(msg, success = false) {
     const t = document.getElementById('toast');
@@ -527,44 +521,28 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 3500);
   }
 
-  // ── Events from main process ────────────────
   window.connector.onStatus(({ connected }) => {
-    const dot   = document.getElementById('statusDot');
-    const label = document.getElementById('statusLabel');
-    dot.classList.toggle('connected', connected);
-    label.textContent = connected ? 'Подключено' : 'Переподключение...';
+    document.getElementById('statusDot').classList.toggle('connected', connected);
+    document.getElementById('statusLabel').textContent = connected ? 'Подключено' : 'Переподключение...';
   });
 
   window.connector.onRoomList(renderRooms);
-
-  window.connector.onRoomCreated((roomId) => {
-    setInRoom(true);
-  });
-
-  window.connector.onRoomJoined((roomId) => {
-    setInRoom(true);
-  });
-
+  window.connector.onRoomCreated(() => setInRoom(true));
+  window.connector.onRoomJoined(() => setInRoom(true));
   window.connector.onRoomRestored(() => setInRoom(true));
   window.connector.onNotice(showToast);
   window.connector.onBanner(({ title, hint }) => {
-    document.querySelector('#inRoomBanner .room-info').textContent = title;
-    document.querySelector('#inRoomBanner .hint').textContent = hint;
+    document.getElementById('bannerTitle').textContent = title;
+    document.getElementById('bannerHint').textContent = hint;
   });
-
-  window.connector.onRoomLeft(() => {
-    setInRoom(false);
-  });
-
+  window.connector.onRoomLeft(() => setInRoom(false));
   window.connector.onError(showToast);
 
   function setInRoom(state) {
     inRoom = state;
-    const banner = document.getElementById('inRoomBanner');
-    banner.style.display = state ? 'flex' : 'none';
+    document.getElementById('inRoomBanner').style.display = state ? 'flex' : 'none';
   }
 
-  // ── WC3 Path & Launch ───────────────────────
   async function selectWC3Path() {
     const result = await window.connector.selectWC3Path();
     if (result.success && result.path) {
@@ -575,15 +553,11 @@
 
   async function launchWC3() {
     const path = document.getElementById('wc3Path').value || localStorage.getItem('wc3Path');
-    if (!path) {
-      showToast('Сначала выберите путь к Warcraft III.exe в настройках');
-      return;
-    }
+    if (!path) { showToast('Сначала выберите путь к Warcraft III.exe в настройках'); return; }
     const result = await window.connector.launchWC3(path);
     if (!result.success) showToast(result.error);
   }
 
-  // Load saved paths on start
   window.addEventListener('DOMContentLoaded', () => {
     const savedPath = localStorage.getItem('wc3Path');
     if (savedPath) document.getElementById('wc3Path').value = savedPath;
@@ -594,12 +568,10 @@
     }
   });
 
-  // Enter key for auth
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     const wrap = document.getElementById('authWrap');
     if (wrap.style.display === 'none') return;
-
     if (document.getElementById('loginFields').style.display !== 'none') doLogin();
     else if (document.getElementById('registerFields').style.display !== 'none') doRegisterStart();
     else if (document.getElementById('registerCodeFields').style.display !== 'none') doRegisterConfirm();

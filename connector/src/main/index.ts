@@ -47,6 +47,7 @@ function createWindow() {
 
   // Load renderer HTML
   const htmlPath = path.join(__dirname, '../renderer/index.html');
+  mainWindow.setMenu(null);
   mainWindow.loadFile(htmlPath);
   if (!app.isPackaged) mainWindow.webContents.openDevTools();
 
@@ -632,6 +633,10 @@ ipcMain.handle('chat:send', (_e, text: string) => {
   if (typeof text !== 'string') return;
   const trimmed = text.trim().slice(0, 512);
   if (trimmed) wsClient?.sendChatMessage(trimmed);
+});
+
+ipcMain.handle('chat:open', () => {
+  openChatWindow();
 });
 
 app.whenReady().then(createWindow);

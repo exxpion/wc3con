@@ -17,6 +17,7 @@ electron_1.contextBridge.exposeInMainWorld('connector', {
     selectWC3Path: () => electron_1.ipcRenderer.invoke('connector:select-wc3-path'),
     selectMapPath: () => electron_1.ipcRenderer.invoke('connector:select-map-path'),
     launchWC3: (path) => electron_1.ipcRenderer.invoke('connector:launch-wc3', path),
+    openChat: () => electron_1.ipcRenderer.invoke('chat:open'),
     // ── Events from main process ──────────────────────────────────────────────
     onStatus: (cb) => electron_1.ipcRenderer.on('connector:status', (_e, data) => cb(data)),
     onRoomList: (cb) => electron_1.ipcRenderer.on('connector:room-list', (_e, rooms) => cb(rooms)),

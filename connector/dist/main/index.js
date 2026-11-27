@@ -76,6 +76,7 @@ function createWindow() {
     });
     // Load renderer HTML
     const htmlPath = path.join(__dirname, '../renderer/index.html');
+    mainWindow.setMenu(null);
     mainWindow.loadFile(htmlPath);
     if (!electron_1.app.isPackaged)
         mainWindow.webContents.openDevTools();
@@ -620,6 +621,9 @@ electron_1.ipcMain.handle('chat:send', (_e, text) => {
     const trimmed = text.trim().slice(0, 512);
     if (trimmed)
         wsClient?.sendChatMessage(trimmed);
+});
+electron_1.ipcMain.handle('chat:open', () => {
+    openChatWindow();
 });
 electron_1.app.whenReady().then(createWindow);
 electron_1.app.on('window-all-closed', () => {
