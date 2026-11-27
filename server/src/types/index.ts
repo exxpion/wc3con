@@ -32,6 +32,13 @@ export interface GameRoom {
   game_info_updated_at?: number;
 }
 
+export interface ChatMessage {
+  userId: number;
+  username: string;
+  text: string;
+  ts: number;
+}
+
 export interface ConnectedClient {
   user_id: number;
   username: string;
@@ -64,5 +71,7 @@ export enum WSMessageType {
   ROOM_GAMEINFO_LOST = 'room_gameinfo_lost', ROOM_CLOSED = 'room_closed', TUNNEL = 'tunnel',
   GAME_RELAY_PAUSED = 'game_relay_paused', GAME_RELAY_RESUMED = 'game_relay_resumed',
   GAME_ENDED = 'game_ended',
+  CHAT_MESSAGE = 'chat_message',
+  CHAT_HISTORY = 'chat_history',
   ERROR = 'error',
 }

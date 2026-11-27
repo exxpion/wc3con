@@ -23,6 +23,8 @@ var WSMessageType;
     WSMessageType["GAME_RELAY_PAUSED"] = "game_relay_paused";
     WSMessageType["GAME_RELAY_RESUMED"] = "game_relay_resumed";
     WSMessageType["GAME_ENDED"] = "game_ended";
+    WSMessageType["CHAT_MESSAGE"] = "chat_message";
+    WSMessageType["CHAT_HISTORY"] = "chat_history";
     WSMessageType["ERROR"] = "error";
 })(WSMessageType || (exports.WSMessageType = WSMessageType = {}));
 //# sourceMappingURL=types.js.map

@@ -18,6 +18,8 @@ export declare enum WSMessageType {
     GAME_RELAY_PAUSED = "game_relay_paused",
     GAME_RELAY_RESUMED = "game_relay_resumed",
     GAME_ENDED = "game_ended",
+    CHAT_MESSAGE = "chat_message",
+    CHAT_HISTORY = "chat_history",
     ERROR = "error"
 }
 export interface WSMessage {

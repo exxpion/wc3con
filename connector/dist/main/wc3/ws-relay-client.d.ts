@@ -21,6 +21,19 @@ export interface WSClientOptions {
     onGameInfo: (gameInfo: Buffer) => void;
     onGameInfoLost?: () => void;
     onGameEnded?: () => void;
+    onChatMessage?: (msg: {
+        userId: number;
+        username: string;
+        text: string;
+        ts: number;
+    }) => void;
+    onChatHistory?: (messages: Array<{
+        userId: number;
+        username: string;
+        text: string;
+        ts: number;
+    }>) => void;
+    onRoomUpdate?: (action: string, userId: number, username: string) => void;
     onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
     onTunnel: (msg: TunnelMessage) => void;
     onError: (error: string) => void;
@@ -49,6 +62,7 @@ export declare class WSRelayClient {
     sendGameInfo(packet: Buffer): void;
     sendGameInfoLost(): void;
     sendGameEnded(): void;
+    sendChatMessage(text: string): void;
     sendTunnel(msg: TunnelMessage): void;
     isConnected(): boolean;
     private buildBinaryFrame;

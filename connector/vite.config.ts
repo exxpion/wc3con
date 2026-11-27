@@ -7,5 +7,11 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, 'dist/renderer'),
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'public/index.html'),
+        chat: path.resolve(__dirname, 'public/chat.html'),
+      },
+    },
   },
 });

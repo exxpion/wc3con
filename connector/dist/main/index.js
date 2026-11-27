@@ -39,6 +39,7 @@ const udp_broadcaster_1 = require("./wc3/udp-broadcaster");
 const tcp_proxy_1 = require("./wc3/tcp-proxy");
 const ws_relay_client_1 = require("./wc3/ws-relay-client");
 let mainWindow = null;
+let chatWindow = null;
 let udpBroadcaster = null;
 let tcpProxy = null;
 let hostTunnel = null;
@@ -51,6 +52,9 @@ let hostGameFound = false;
 let guestAnnounced = false;
 let hostGamePort = 0;
 let currentUserId = null;
+let currentUsername = null;
+// Участники текущей комнаты (для окна чата)
+let roomPlayers = [];
 // Отслеживание завершения игры (хост)
 let lastGameInfoTime = 0;
 let gameEndedTimer = null;
@@ -83,6 +87,43 @@ function createWindow() {
 function sendToRenderer(channel, data) {
     mainWindow?.webContents.send(channel, data);
 }
+function sendToChat(channel, data) {
+    chatWindow?.webContents.send(channel, data);
+}
+function openChatWindow() {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+        chatWindow.focus();
+        return;
+    }
+    chatWindow = new electron_1.BrowserWindow({
+        width: 700,
+        height: 500,
+        minWidth: 500,
+        minHeight: 350,
+        title: 'Чат лобби',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            preload: path.join(__dirname, 'chat-preload.js'),
+        },
+    });
+    chatWindow.setMenu(null);
+    chatWindow.loadFile(path.join(__dirname, '../renderer/chat.html'));
+    if (!electron_1.app.isPackaged)
+        chatWindow.webContents.openDevTools({ mode: 'detach' });
+    chatWindow.on('closed', () => { chatWindow = null; });
+    // Отправить текущий список участников как только окно загрузится
+    chatWindow.webContents.once('did-finish-load', () => {
+        sendToChat('chat:players', roomPlayers);
+    });
+}
+function closeChatWindow() {
+    if (chatWindow && !chatWindow.isDestroyed()) {
+        chatWindow.webContents.send('chat:room-closed');
+        // Небольшая задержка, чтобы рендерер успел показать уведомление
+        setTimeout(() => { chatWindow?.close(); chatWindow = null; }, 1500);
+    }
+}
 function notice(text) {
     console.log('NOTICE:', text);
     sendToRenderer('connector:notice', text);
@@ -100,6 +141,8 @@ function resetRoomState() {
     hostGameFound = false;
     guestAnnounced = false;
     hostGamePort = 0;
+    roomPlayers = [];
+    closeChatWindow();
 }
 function cleanup() {
     resetRoomState();
@@ -216,10 +259,13 @@ function connectWSClient(token) {
             notice('Связь с игровым relay потеряна. Ожидаем переподключения (до 180 секунд)');
         },
         // ── Мы создали комнату: мы ХОСТ ──
-        onRoomCreated: (roomId) => {
+        onRoomCreated: (roomId, room) => {
             console.log('Room created:', roomId);
             role = 'host';
             hostGameFound = false;
+            roomPlayers = currentUserId && currentUsername
+                ? [{ userId: currentUserId, username: currentUsername }] : [];
+            openChatWindow();
             // Ищем игру, которую хост создаст в своём Warcraft III
             udpBroadcaster?.probe((packet, info) => {
                 hostGamePort = info.port;
@@ -245,6 +291,8 @@ function connectWSClient(token) {
             console.log('Joined room:', roomId);
             role = 'guest';
             guestAnnounced = false;
+            roomPlayers = Array.isArray(room.members) ? room.members : [];
+            openChatWindow();
             if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
                 udpBroadcaster.announce(gameInfo, tcpProxy.port);
                 guestAnnounced = true;
@@ -264,6 +312,11 @@ function connectWSClient(token) {
         onRoomRestored: (roomId, room, gameInfo) => {
             console.log('[ROOM] restored after relay reconnect:', roomId);
             role = room.host_user_id === currentUserId ? 'host' : 'guest';
+            if (Array.isArray(room.members)) {
+                roomPlayers = room.members;
+                sendToChat('chat:players', roomPlayers);
+            }
+            openChatWindow();
             if (role === 'host') {
                 hostGameFound = false;
                 hostGamePort = 0;
@@ -343,6 +396,23 @@ function connectWSClient(token) {
                 notice('Игра завершена — лобби закрыто');
             }
         },
+        onChatMessage: (msg) => {
+            sendToChat('chat:message', msg);
+        },
+        onChatHistory: (messages) => {
+            sendToChat('chat:history', messages);
+        },
+        onRoomUpdate: (action, userId, username) => {
+            if (action === 'player_joined' || action === 'player_reconnected') {
+                if (!roomPlayers.find((p) => p.userId === userId)) {
+                    roomPlayers.push({ userId, username });
+                }
+            }
+            else if (action === 'player_left') {
+                roomPlayers = roomPlayers.filter((p) => p.userId !== userId);
+            }
+            sendToChat('chat:players', roomPlayers);
+        },
         onRelayState: (state, payload) => {
             if (state === 'paused') {
                 udpBroadcaster?.reset();
@@ -413,6 +483,7 @@ electron_1.ipcMain.handle('connector:register-confirm', async (_e, username, cod
             return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
         }
         currentUserId = user.id;
+        currentUsername = user.username;
         connectWSClient(token);
         return { success: true, user };
     }
@@ -438,6 +509,7 @@ electron_1.ipcMain.handle('connector:login', async (_e, username, password) => {
             return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
         }
         currentUserId = user.id;
+        currentUsername = user.username;
         connectWSClient(token);
         return { success: true, user };
     }
@@ -448,6 +520,7 @@ electron_1.ipcMain.handle('connector:login', async (_e, username, password) => {
 electron_1.ipcMain.handle('connector:logout', async () => {
     cleanup();
     currentUserId = null;
+    currentUsername = null;
     return { success: true };
 });
 electron_1.ipcMain.handle('connector:forgot-password', async (_e, email) => {
@@ -541,6 +614,13 @@ electron_1.ipcMain.handle('connector:launch-wc3', async (_e, wc3Path) => {
     }
 });
 // ─── App lifecycle ─────────────────────────────────────────────────────────────
+electron_1.ipcMain.handle('chat:send', (_e, text) => {
+    if (typeof text !== 'string')
+        return;
+    const trimmed = text.trim().slice(0, 512);
+    if (trimmed)
+        wsClient?.sendChatMessage(trimmed);
+});
 electron_1.app.whenReady().then(createWindow);
 electron_1.app.on('window-all-closed', () => {
     cleanup();

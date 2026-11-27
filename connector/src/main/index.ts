@@ -5,6 +5,7 @@ import { TCPProxy, HostTunnel } from './wc3/tcp-proxy';
 import { WSRelayClient, TunnelMessage } from './wc3/ws-relay-client';
 
 let mainWindow: BrowserWindow | null = null;
+let chatWindow: BrowserWindow | null = null;
 let udpBroadcaster: UDPBroadcaster | null = null;
 let tcpProxy: TCPProxy | null = null;
 let hostTunnel: HostTunnel | null = null;
@@ -18,6 +19,9 @@ let hostGameFound = false;
 let guestAnnounced = false;
 let hostGamePort = 0;
 let currentUserId: number | null = null;
+let currentUsername: string | null = null;
+// Участники текущей комнаты (для окна чата)
+let roomPlayers: Array<{ userId: number; username: string }> = [];
 
 // Отслеживание завершения игры (хост)
 let lastGameInfoTime = 0;
@@ -56,6 +60,45 @@ function sendToRenderer(channel: string, data?: any) {
   mainWindow?.webContents.send(channel, data);
 }
 
+function sendToChat(channel: string, data?: any) {
+  chatWindow?.webContents.send(channel, data);
+}
+
+function openChatWindow() {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.focus();
+    return;
+  }
+  chatWindow = new BrowserWindow({
+    width: 700,
+    height: 500,
+    minWidth: 500,
+    minHeight: 350,
+    title: 'Чат лобби',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'chat-preload.js'),
+    },
+  });
+  chatWindow.setMenu(null);
+  chatWindow.loadFile(path.join(__dirname, '../renderer/chat.html'));
+  if (!app.isPackaged) chatWindow.webContents.openDevTools({ mode: 'detach' });
+  chatWindow.on('closed', () => { chatWindow = null; });
+  // Отправить текущий список участников как только окно загрузится
+  chatWindow.webContents.once('did-finish-load', () => {
+    sendToChat('chat:players', roomPlayers);
+  });
+}
+
+function closeChatWindow() {
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.webContents.send('chat:room-closed');
+    // Небольшая задержка, чтобы рендерер успел показать уведомление
+    setTimeout(() => { chatWindow?.close(); chatWindow = null; }, 1500);
+  }
+}
+
 function notice(text: string) {
   console.log('NOTICE:', text);
   sendToRenderer('connector:notice', text);
@@ -73,6 +116,8 @@ function resetRoomState() {
   hostGameFound = false;
   guestAnnounced = false;
   hostGamePort = 0;
+  roomPlayers = [];
+  closeChatWindow();
 }
 
 function cleanup() {
@@ -202,10 +247,13 @@ function connectWSClient(token: string) {
     },
 
     // ── Мы создали комнату: мы ХОСТ ──
-    onRoomCreated: (roomId) => {
+    onRoomCreated: (roomId, room) => {
       console.log('Room created:', roomId);
       role = 'host';
       hostGameFound = false;
+      roomPlayers = currentUserId && currentUsername
+        ? [{ userId: currentUserId, username: currentUsername }] : [];
+      openChatWindow();
 
       // Ищем игру, которую хост создаст в своём Warcraft III
       udpBroadcaster?.probe((packet, info) => {
@@ -234,6 +282,8 @@ function connectWSClient(token: string) {
       console.log('Joined room:', roomId);
       role = 'guest';
       guestAnnounced = false;
+      roomPlayers = Array.isArray(room.members) ? room.members : [];
+      openChatWindow();
 
       if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
         udpBroadcaster.announce(gameInfo, tcpProxy.port);
@@ -254,6 +304,11 @@ function connectWSClient(token: string) {
     onRoomRestored: (roomId, room, gameInfo) => {
       console.log('[ROOM] restored after relay reconnect:', roomId);
       role = room.host_user_id === currentUserId ? 'host' : 'guest';
+      if (Array.isArray(room.members)) {
+        roomPlayers = room.members;
+        sendToChat('chat:players', roomPlayers);
+      }
+      openChatWindow();
       if (role === 'host') {
         hostGameFound = false;
         hostGamePort = 0;
@@ -336,6 +391,25 @@ function connectWSClient(token: string) {
       }
     },
 
+    onChatMessage: (msg) => {
+      sendToChat('chat:message', msg);
+    },
+
+    onChatHistory: (messages) => {
+      sendToChat('chat:history', messages);
+    },
+
+    onRoomUpdate: (action, userId, username) => {
+      if (action === 'player_joined' || action === 'player_reconnected') {
+        if (!roomPlayers.find((p) => p.userId === userId)) {
+          roomPlayers.push({ userId, username });
+        }
+      } else if (action === 'player_left') {
+        roomPlayers = roomPlayers.filter((p) => p.userId !== userId);
+      }
+      sendToChat('chat:players', roomPlayers);
+    },
+
     onRelayState: (state, payload) => {
       if (state === 'paused') {
         udpBroadcaster?.reset();
@@ -412,6 +486,7 @@ ipcMain.handle('connector:register-confirm', async (_e, username: string, code: 
     }
 
     currentUserId = user.id;
+    currentUsername = user.username;
     connectWSClient(token);
 
     return { success: true, user };
@@ -441,6 +516,7 @@ ipcMain.handle('connector:login', async (_e, username: string, password: string)
     }
 
     currentUserId = user.id;
+    currentUsername = user.username;
     connectWSClient(token);
 
     return { success: true, user };
@@ -452,6 +528,7 @@ ipcMain.handle('connector:login', async (_e, username: string, password: string)
 ipcMain.handle('connector:logout', async () => {
   cleanup();
   currentUserId = null;
+  currentUsername = null;
   return { success: true };
 });
 
@@ -550,6 +627,12 @@ ipcMain.handle('connector:launch-wc3', async (_e, wc3Path: string) => {
 });
 
 // ─── App lifecycle ─────────────────────────────────────────────────────────────
+
+ipcMain.handle('chat:send', (_e, text: string) => {
+  if (typeof text !== 'string') return;
+  const trimmed = text.trim().slice(0, 512);
+  if (trimmed) wsClient?.sendChatMessage(trimmed);
+});
 
 app.whenReady().then(createWindow);
 

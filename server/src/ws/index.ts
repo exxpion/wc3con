@@ -7,6 +7,7 @@ import {
 import {
   createRoom, joinRoom, leaveRoom, closeRoom, getRoomList,
   getClientsInRoom, getConnectedClientsInRoom, clients, rooms, roomGameInfo,
+  roomChat, roomChatJoinedAt, CHAT_MAX_MESSAGES, CHAT_MAX_LENGTH,
 } from '../game/rooms.js';
 
 const PROTOCOL_VERSION = 1;
@@ -299,8 +300,17 @@ export function setupWebSocketServer(app: FastifyInstance) {
               ? info : undefined;
             send(ws, {
               type: WSMessageType.ROOM_RESTORED,
-              payload: { room, role: restored.is_host ? 'host' : 'guest', game_info: freshInfo },
+              payload: {
+                room, role: restored.is_host ? 'host' : 'guest', game_info: freshInfo,
+                members: getClientsInRoom(room.id).map((m) => ({ userId: m.user_id, username: m.username })),
+              },
             });
+            // Отправить сообщения которые пришли пока пользователь был в комнате (включая disconnect)
+            const userJoinedAt = roomChatJoinedAt.get(room.id)?.get(restored.user_id) ?? 0;
+            const missed = (roomChat.get(room.id) ?? []).filter((m) => m.ts > userJoinedAt);
+            if (missed.length > 0) {
+              send(ws, { type: WSMessageType.CHAT_HISTORY, payload: { messages: missed } });
+            }
             notifyRoomClients(room.id, {
               type: WSMessageType.ROOM_UPDATE,
               payload: { action: 'player_reconnected', userId: restored.user_id, username: restored.username },
@@ -334,6 +344,9 @@ export function setupWebSocketServer(app: FastifyInstance) {
         const room = createRoom(payload.name.trim(), payload.map.trim(), currentClient.user_id, payload.maxPlayers);
         currentClient.room_id = room.id;
         currentClient.is_host = true;
+        // Хост тоже участник чата — фиксируем время входа
+        if (!roomChatJoinedAt.has(room.id)) roomChatJoinedAt.set(room.id, new Map());
+        roomChatJoinedAt.get(room.id)!.set(currentClient.user_id, room.created_at);
         send(ws, { type: WSMessageType.ROOM_CREATED, payload: room });
         broadcastRoomList();
         break;
@@ -347,10 +360,14 @@ export function setupWebSocketServer(app: FastifyInstance) {
         if (!room) { sendError(ws, 'Room not found or full'); return; }
         currentClient.room_id = room.id;
         currentClient.is_host = false;
+        // Запомнить момент входа, чтобы при reconnect отправить пропущенные сообщения
+        if (!roomChatJoinedAt.has(room.id)) roomChatJoinedAt.set(room.id, new Map());
+        roomChatJoinedAt.get(room.id)!.set(currentClient.user_id, Date.now());
         const info = roomGameInfo.get(room.id);
         const freshInfo = info && room.game_info_updated_at && Date.now() - room.game_info_updated_at <= GAMEINFO_MAX_AGE_MS
           ? info : undefined;
-        send(ws, { type: WSMessageType.ROOM_JOINED, payload: { ...room, game_info: freshInfo } });
+        const members = getClientsInRoom(room.id).map((m) => ({ userId: m.user_id, username: m.username }));
+        send(ws, { type: WSMessageType.ROOM_JOINED, payload: { ...room, game_info: freshInfo, members } });
         notifyRoomClients(room.id, {
           type: WSMessageType.ROOM_UPDATE,
           payload: { action: 'player_joined', userId: currentClient.user_id, username: currentClient.username },
@@ -404,6 +421,23 @@ export function setupWebSocketServer(app: FastifyInstance) {
         setTimeout(() => {
           closeRoomAndNotify(roomId, 'game_ended');
         }, 10_000);
+        break;
+      }
+      case WSMessageType.CHAT_MESSAGE: {
+        if (!currentClient.room_id) { sendError(ws, 'You are not in a room'); return; }
+        const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+        if (!text || text.length > CHAT_MAX_LENGTH) { sendError(ws, 'Invalid chat message'); return; }
+        const roomId = currentClient.room_id;
+        const room = rooms.get(roomId);
+        if (!room) return;
+        const history = roomChat.get(roomId) ?? [];
+        history.push({ userId: currentClient.user_id, username: currentClient.username, text, ts: Date.now() });
+        if (history.length > CHAT_MAX_MESSAGES) history.splice(0, history.length - CHAT_MAX_MESSAGES);
+        roomChat.set(roomId, history);
+        notifyRoomClients(roomId, {
+          type: WSMessageType.CHAT_MESSAGE,
+          payload: { userId: currentClient.user_id, username: currentClient.username, text, ts: Date.now() },
+        });
         break;
       }
       default:

@@ -26,6 +26,9 @@ export interface WSClientOptions {
   onGameInfo: (gameInfo: Buffer) => void;
   onGameInfoLost?: () => void;
   onGameEnded?: () => void;
+  onChatMessage?: (msg: { userId: number; username: string; text: string; ts: number }) => void;
+  onChatHistory?: (messages: Array<{ userId: number; username: string; text: string; ts: number }>) => void;
+  onRoomUpdate?: (action: string, userId: number, username: string) => void;
   onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
   onTunnel: (msg: TunnelMessage) => void;
   onError: (error: string) => void;
@@ -177,6 +180,10 @@ export class WSRelayClient {
     this.send({ type: WSMessageType.GAME_ENDED, payload: {} });
   }
 
+  sendChatMessage(text: string): void {
+    this.send({ type: WSMessageType.CHAT_MESSAGE, payload: { text } });
+  }
+
   sendTunnel(msg: TunnelMessage): void {
     const frame = this.buildBinaryFrame(msg);
     const size = frame.length;
@@ -314,6 +321,9 @@ export class WSRelayClient {
         break;
       case WSMessageType.ROOM_UPDATE:
         this.requestRoomList();
+        if (payload && typeof payload.action === 'string') {
+          this.options.onRoomUpdate?.(payload.action, payload.userId, payload.username);
+        }
         break;
       case WSMessageType.ROOM_GAMEINFO: {
         const packet = this.decodeBase64(payload?.data, 4096);
@@ -325,6 +335,16 @@ export class WSRelayClient {
         break;
       case WSMessageType.GAME_ENDED:
         this.options.onGameEnded?.();
+        break;
+      case WSMessageType.CHAT_MESSAGE:
+        if (payload && typeof payload.userId === 'number' && typeof payload.username === 'string' && typeof payload.text === 'string') {
+          this.options.onChatMessage?.({ userId: payload.userId, username: payload.username, text: payload.text, ts: payload.ts ?? Date.now() });
+        }
+        break;
+      case WSMessageType.CHAT_HISTORY:
+        if (payload && Array.isArray(payload.messages)) {
+          this.options.onChatHistory?.(payload.messages);
+        }
         break;
       case WSMessageType.GAME_RELAY_PAUSED:
         this.relayPaused = true;

@@ -147,6 +147,9 @@ class WSRelayClient {
     sendGameEnded() {
         this.send({ type: types_js_1.WSMessageType.GAME_ENDED, payload: {} });
     }
+    sendChatMessage(text) {
+        this.send({ type: types_js_1.WSMessageType.CHAT_MESSAGE, payload: { text } });
+    }
     sendTunnel(msg) {
         const frame = this.buildBinaryFrame(msg);
         const size = frame.length;
@@ -287,6 +290,9 @@ class WSRelayClient {
                 break;
             case types_js_1.WSMessageType.ROOM_UPDATE:
                 this.requestRoomList();
+                if (payload && typeof payload.action === 'string') {
+                    this.options.onRoomUpdate?.(payload.action, payload.userId, payload.username);
+                }
                 break;
             case types_js_1.WSMessageType.ROOM_GAMEINFO: {
                 const packet = this.decodeBase64(payload?.data, 4096);
@@ -299,6 +305,16 @@ class WSRelayClient {
                 break;
             case types_js_1.WSMessageType.GAME_ENDED:
                 this.options.onGameEnded?.();
+                break;
+            case types_js_1.WSMessageType.CHAT_MESSAGE:
+                if (payload && typeof payload.userId === 'number' && typeof payload.username === 'string' && typeof payload.text === 'string') {
+                    this.options.onChatMessage?.({ userId: payload.userId, username: payload.username, text: payload.text, ts: payload.ts ?? Date.now() });
+                }
+                break;
+            case types_js_1.WSMessageType.CHAT_HISTORY:
+                if (payload && Array.isArray(payload.messages)) {
+                    this.options.onChatHistory?.(payload.messages);
+                }
                 break;
             case types_js_1.WSMessageType.GAME_RELAY_PAUSED:
                 this.relayPaused = true;
