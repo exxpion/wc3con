@@ -82,9 +82,11 @@
     input:focus { border-color: var(--gold); }
     input[readonly] { cursor: pointer; }
     .auth-box input { width: 100%; }
-    .create-row input, .modal-row input { margin-bottom: 0; min-width: 0; width: 0; }
+    .create-row input, .modal-row input { margin-bottom: 0; min-width: 0; width: auto; }
+    .create-row .btn-sm, .modal-row .btn-sm { width: auto; flex: 0 0 auto; }
     #roomName { flex: 1 1 0; }
     #mapName  { flex: 2 1 0; }
+    #wc3Path  { flex: 1 1 0; }
 
     .link-btn {
       background: none; border: none; padding: 0;
