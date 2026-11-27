@@ -31,7 +31,7 @@
       "target": [
         "portable"
       ],
-      "icon": "build/icon.ico"
+      "icon": "build/icon.png"
     }
   },
   "dependencies": {
@@ -44,6 +44,7 @@
     "concurrently": "^8.2.2",
     "electron": "28.1.0",
     "electron-builder": "^24.9.1",
+    "png-to-ico": "^3.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "typescript": "^5.3.3",

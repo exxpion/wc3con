@@ -40,6 +40,7 @@ function createWindow() {
     width: 850,
     height: 650,
     resizable: false,
+    icon: path.join(__dirname, '../../build/icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -78,6 +79,7 @@ function openChatWindow() {
     minWidth: 500,
     minHeight: 350,
     title: 'Чат лобби',
+    icon: path.join(__dirname, '../../build/icon.png'),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
