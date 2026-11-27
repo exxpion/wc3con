@@ -83,9 +83,10 @@
     /* full-width standalone inputs */
     .auth-box input { width: 100%; }
     /* flex row inputs */
-    .create-row input, .modal-row input { 
-      flex: 1; min-width: 0; margin-bottom: 0; width: 0;
+    .create-row input, .modal-row input {
+      flex: 1 1 0px; min-width: 0; margin-bottom: 0;
     }
+    .create-row input.map-name { flex: 2 1 0px; }
 
     .link-btn {
       background: none; border: none; padding: 0;
@@ -292,8 +293,8 @@
   <div class="create-panel">
     <h3>Создать игру</h3>
     <div class="create-row">
-      <input type="text" id="roomName" placeholder="Название" style="flex:1" />
-      <input type="text" id="mapName" placeholder="Выберите карту .w3x / .w3m" style="flex:2" readonly />
+      <input type="text" id="roomName" placeholder="Название" />
+      <input type="text" id="mapName" class="map-name" placeholder="Выберите карту .w3x / .w3m" readonly />
       <button class="btn-sm btn-primary" onclick="selectMapPath()">Карта</button>
       <button class="btn-sm btn-success" onclick="doCreateRoom()">Создать</button>
     </div>  </div>
