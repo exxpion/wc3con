@@ -1,0 +1,50 @@
+:root {
+  --bg:        #0c0c0c;
+  --bg2:       #161616;
+  --bg3:       #1e1e1e;
+  --border:    #2e2e2e;
+  --gold:      #c9a227;
+  --gold-dim:  #a07c18;
+  --gold-bg:   rgba(201,162,39,0.08);
+  --text:      #e0d8c8;
+  --text-dim:  #888;
+  --green:     #4caf67;
+  --red:       #d94040;
+  --red-bg:    rgba(217,64,64,0.12);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* Buttons */
+.btn {
+  border: none; border-radius: 6px;
+  font-size: 14px; cursor: pointer;
+  transition: opacity 0.2s;
+  font-weight: 600;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--gold); color: #0c0c0c; padding: 10px; width: 100%; }
+.btn-success { background: var(--green); color: #0c0c0c; }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-sm {
+  padding: 6px 14px; font-size: 13px;
+  border-radius: 5px; white-space: nowrap;
+}
+.btn-sm.btn-primary { background: var(--gold); color: #0c0c0c; }
+.btn-sm.btn-success { background: var(--green); color: #0c0c0c; }
+.btn-sm.btn-danger { background: var(--red); color: #fff; }
+.btn-sm.btn-chat { background: var(--bg3); color: var(--gold); border: 1px solid var(--gold); }
+.btn-sm.btn-chat:hover { background: var(--gold-bg); }
+.btn-sm:disabled { background: #333; color: #666; cursor: not-allowed; opacity: 1; }
