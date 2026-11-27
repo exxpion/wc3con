@@ -32,7 +32,7 @@ class WSRelayClient {
             return;
         this.isConnecting = true;
         console.log(`[WS] connecting to ${this.options.serverUrl}`);
-        const ws = new ws_1.WebSocket(this.options.serverUrl);
+        const ws = new ws_1.WebSocket(this.options.serverUrl, { perMessageDeflate: false });
         this.ws = ws;
         ws.on('open', () => {
             this.isConnecting = false;

@@ -60,7 +60,7 @@ export class WSRelayClient {
     if (this.ws || this.isConnecting || this.stopped) return;
     this.isConnecting = true;
     console.log(`[WS] connecting to ${this.options.serverUrl}`);
-    const ws = new WebSocket(this.options.serverUrl);
+    const ws = new WebSocket(this.options.serverUrl, { perMessageDeflate: false } as any);
     this.ws = ws;
 
     ws.on('open', () => {

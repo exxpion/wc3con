@@ -25,7 +25,7 @@ const BIN_OP_CLOSE_ALL = 4;
 const BIN_HEADER       = 9;
 
 export function setupWebSocketServer(app: FastifyInstance) {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000 });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000, perMessageDeflate: false });
 
   app.server.on('upgrade', (request: IncomingMessage, socket, head) => {
     if (request.url === '/ws') {
