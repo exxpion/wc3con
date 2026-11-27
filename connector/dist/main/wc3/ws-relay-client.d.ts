@@ -23,7 +23,6 @@ export interface WSClientOptions {
     onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
     onTunnel: (msg: TunnelMessage) => void;
     onError: (error: string) => void;
-    onP2PConnect?: (peerId: number, peerIp: string, peerPort: number) => void;
 }
 export declare class WSRelayClient {
     private options;
@@ -48,8 +47,6 @@ export declare class WSRelayClient {
     requestRoomList(): void;
     sendGameInfo(packet: Buffer): void;
     sendGameInfoLost(): void;
-    /** Tell relay server our local UDP port so it can build our P2P endpoint. */
-    registerP2P(udpPort: number): void;
     sendTunnel(msg: TunnelMessage): void;
     isConnected(): boolean;
     private sendRaw;

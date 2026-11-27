@@ -38,13 +38,11 @@ const path = __importStar(require("path"));
 const udp_broadcaster_1 = require("./wc3/udp-broadcaster");
 const tcp_proxy_1 = require("./wc3/tcp-proxy");
 const ws_relay_client_1 = require("./wc3/ws-relay-client");
-const p2p_tunnel_1 = require("./wc3/p2p-tunnel");
 let mainWindow = null;
 let udpBroadcaster = null;
 let tcpProxy = null;
 let hostTunnel = null;
 let wsClient = null;
-let p2pTunnel = null;
 // Роль в текущей комнате
 let role = null;
 // Хост: нашли ли мы уже игру в локальном WC3
@@ -53,23 +51,10 @@ let hostGameFound = false;
 let guestAnnounced = false;
 let hostGamePort = 0;
 let currentUserId = null;
-let currentHostId = null; // userId хоста текущей комнаты (для гостя)
 const API_URL = process.env.WC3_SERVER_HTTP_URL || 'http://130.78.13.15:3000';
 const SERVER_URL = process.env.WC3_SERVER_WS_URL || API_URL.replace(/^http/, 'ws') + '/ws';
 // Порт самого Warcraft III. Коннектор его НЕ занимает — он только обращается к WC3 по этому порту.
 const WC3_PORT = 6112;
-function parseServerAddr(url) {
-    try {
-        const u = new URL(url);
-        return {
-            serverIp: u.hostname,
-            serverPort: u.port ? parseInt(u.port) : (u.protocol === 'https:' ? 443 : 80),
-        };
-    }
-    catch {
-        return { serverIp: '130.78.13.15', serverPort: 3000 };
-    }
-}
 function createWindow() {
     mainWindow = new electron_1.BrowserWindow({
         width: 850,
@@ -107,7 +92,6 @@ function resetRoomState() {
     hostGameFound = false;
     guestAnnounced = false;
     hostGamePort = 0;
-    currentHostId = null;
 }
 function cleanup() {
     resetRoomState();
@@ -118,78 +102,28 @@ function cleanup() {
     hostTunnel = null;
     wsClient?.disconnect();
     wsClient = null;
-    p2pTunnel?.stop();
-    p2pTunnel = null;
 }
 // ─── Сетевой стек (создаётся при входе) ──────────────────────────────────────
-async function startNetworkStack(token, serverIp, serverPort) {
+async function startNetworkStack() {
     try {
         udpBroadcaster = new udp_broadcaster_1.UDPBroadcaster(WC3_PORT);
         // Режим гостя: WC3 подключается к нашему прокси (порт выбирает система, НЕ 6112)
         tcpProxy = new tcp_proxy_1.TCPProxy({
-            onOpen: (conn) => routeTunnel({ conn, op: 'open' }),
-            onData: (conn, data) => routeTunnel({ conn, op: 'data', data }),
-            onClose: (conn) => routeTunnel({ conn, op: 'close' }),
+            onOpen: (conn) => wsClient?.sendTunnel({ conn, op: 'open' }),
+            onData: (conn, data) => wsClient?.sendTunnel({ conn, op: 'data', data }),
+            onClose: (conn) => wsClient?.sendTunnel({ conn, op: 'close' }),
         });
         await tcpProxy.start();
         // Режим хоста: туннели к нашему собственному WC3
         hostTunnel = new tcp_proxy_1.HostTunnel({
             wc3Port: WC3_PORT,
-            onData: (userId, conn, data) => routeTunnelTo(userId, { conn, op: 'data', data }),
-            onClose: (userId, conn) => routeTunnelTo(userId, { conn, op: 'close' }),
+            onData: (userId, conn, data) => wsClient?.sendTunnel({ to: userId, conn, op: 'data', data }),
+            onClose: (userId, conn) => wsClient?.sendTunnel({ to: userId, conn, op: 'close' }),
         });
-        // P2P tunnel
-        const url = new URL(API_URL.replace(/^ws/, 'http'));
-        p2pTunnel = new p2p_tunnel_1.P2PTunnel({
-            serverIp,
-            serverPort,
-            jwtToken: token,
-            onReady: (extIp, extPort) => {
-                console.log(`[P2P] Ready: external ${extIp}:${extPort}, local port ${p2pTunnel.localPort}`);
-                wsClient?.registerP2P(p2pTunnel.localPort);
-            },
-            onTunnel: (peerId, msg) => {
-                // Incoming tunnel message from a peer directly (not via relay)
-                handleTunnel({ ...msg, from: peerId });
-            },
-            onPeerConnected: (peerId) => {
-                console.log(`[P2P] Direct link ACTIVE with peer ${peerId}`);
-                notice(`P2P: прямое соединение с игроком ${peerId} установлено (меньший пинг)`);
-            },
-            onPeerFailed: (peerId) => {
-                console.warn(`[P2P] Hole-punch failed for peer ${peerId}, using relay`);
-            },
-        });
-        p2pTunnel.start();
         return { success: true };
     }
     catch (err) {
         return { success: false, error: err.message };
-    }
-}
-// ─── Маршрутизация tunnel-трафика ─────────────────────────────────────────────
-/** Отправить tunnel-сообщение гостя → хосту (через P2P если доступен, иначе relay) */
-function routeTunnel(msg) {
-    if (role !== 'guest')
-        return;
-    // Try to find host peer id via current room — relay client knows it
-    const hostPeerId = currentHostId;
-    if (hostPeerId !== null && p2pTunnel?.isP2PActive(hostPeerId)) {
-        p2pTunnel.sendTunnel(hostPeerId, msg);
-    }
-    else {
-        wsClient?.sendTunnel(msg);
-    }
-}
-/** Отправить tunnel-сообщение хоста → конкретному гостю */
-function routeTunnelTo(userId, msg) {
-    if (role !== 'host')
-        return;
-    if (p2pTunnel?.isP2PActive(userId)) {
-        p2pTunnel.sendTunnel(userId, { ...msg, to: userId });
-    }
-    else {
-        wsClient?.sendTunnel({ ...msg, to: userId });
     }
 }
 // ─── Обработка туннельного трафика ───────────────────────────────────────────
@@ -285,7 +219,6 @@ function connectWSClient(token) {
             console.log('Joined room:', roomId);
             role = 'guest';
             guestAnnounced = false;
-            currentHostId = room.host_user_id ?? null;
             if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
                 udpBroadcaster.announce(gameInfo, tcpProxy.port);
                 guestAnnounced = true;
@@ -395,10 +328,6 @@ function connectWSClient(token) {
             }
         },
         onTunnel: handleTunnel,
-        onP2PConnect: (peerId, peerIp, peerPort) => {
-            console.log(`[P2P] Received peer endpoint from relay: peer=${peerId} ${peerIp}:${peerPort}`);
-            p2pTunnel?.connectToPeer(peerId, peerIp, peerPort);
-        },
         onError: (error) => {
             console.error('WS error:', error);
             if (/invalid|expired token|connected from another connector instance/i.test(error)) {
@@ -439,8 +368,7 @@ electron_1.ipcMain.handle('connector:register-confirm', async (_e, username, cod
             return { success: false, error: data.error };
         const { token, user } = data;
         cleanup();
-        const { serverIp, serverPort } = parseServerAddr(API_URL);
-        const networkResult = await startNetworkStack(token, serverIp, serverPort);
+        const networkResult = await startNetworkStack();
         if (!networkResult.success) {
             return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
         }
@@ -465,8 +393,7 @@ electron_1.ipcMain.handle('connector:login', async (_e, username, password) => {
         const { token, user } = data;
         // Если уже были подключены — аккуратно всё остановить
         cleanup();
-        const { serverIp, serverPort } = parseServerAddr(API_URL);
-        const networkResult = await startNetworkStack(token, serverIp, serverPort);
+        const networkResult = await startNetworkStack();
         if (!networkResult.success) {
             return { success: false, error: `Не удалось запустить локальный прокси: ${networkResult.error}` };
         }

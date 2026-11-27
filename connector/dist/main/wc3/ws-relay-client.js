@@ -136,10 +136,6 @@ class WSRelayClient {
     sendGameInfoLost() {
         this.send({ type: types_js_1.WSMessageType.ROOM_GAMEINFO_LOST, payload: {} });
     }
-    /** Tell relay server our local UDP port so it can build our P2P endpoint. */
-    registerP2P(udpPort) {
-        this.send({ type: types_js_1.WSMessageType.P2P_REGISTER, payload: { udp_port: udpPort } });
-    }
     sendTunnel(msg) {
         const payload = {
             to: msg.to,
@@ -293,12 +289,6 @@ class WSRelayClient {
                 });
                 break;
             }
-            case types_js_1.WSMessageType.P2P_CONNECT:
-                if (payload && Number.isInteger(payload.peer_id) &&
-                    typeof payload.peer_ip === 'string' && Number.isInteger(payload.peer_port)) {
-                    this.options.onP2PConnect?.(payload.peer_id, payload.peer_ip, payload.peer_port);
-                }
-                break;
             case types_js_1.WSMessageType.ERROR:
                 this.options.onError(payload?.error || 'Relay server error');
                 break;

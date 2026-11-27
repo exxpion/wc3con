@@ -16,15 +16,12 @@ const expiredRoomByUser = new Map<number, string>();
 const MAX_TUNNEL_CHUNK = 700_000;
 const MAX_GAMEINFO_BASE64 = 4096;
 
-// ── P2P UDP endpoint registry ─────────────────────────────────────────────────
-// Called from index.ts when a UDP discovery packet arrives.
-export function registerUdpEndpoint(userId: number, ip: string, port: number): void {
-  const client = clients.get(userId);
-  if (client) {
-    client.udp_endpoint = { ip, port };
-    console.log(`[P2P] Registered UDP endpoint for user ${userId}: ${ip}:${port}`);
-  }
-}
+// Binary tunnel frame: [1 op][4 conn LE][4 userId LE][data?]
+const BIN_OP_OPEN      = 1;
+const BIN_OP_DATA      = 2;
+const BIN_OP_CLOSE     = 3;
+const BIN_OP_CLOSE_ALL = 4;
+const BIN_HEADER       = 9;
 
 export function setupWebSocketServer(app: FastifyInstance) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000 });
@@ -38,9 +35,13 @@ export function setupWebSocketServer(app: FastifyInstance) {
   wss.on('connection', (ws: WebSocket) => {
     let client: ConnectedClient | null = null;
 
-    ws.on('message', async (data) => {
+    ws.on('message', async (data, isBinary) => {
       try {
         const raw = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as any);
+        if (isBinary) {
+          if (client) handleBinaryTunnel(ws, raw, client);
+          return;
+        }
         const message = JSON.parse(raw.toString('utf8')) as WSMessage;
         if (!message || typeof message.type !== 'string') throw new Error('Message must contain a type');
         await handleMessage(ws, message, client, (next) => { client = next; });
@@ -63,6 +64,42 @@ export function setupWebSocketServer(app: FastifyInstance) {
 
     ws.on('error', (err) => app.log.warn({ err }, 'WebSocket transport error'));
   });
+
+  function sendBinaryTunnel(target: WebSocket | null | undefined, op: number, conn: number, userId: number, data?: Buffer): void {
+    if (!target || target.readyState !== WebSocket.OPEN) return;
+    const header = Buffer.allocUnsafe(BIN_HEADER);
+    header[0] = op;
+    header.writeUInt32LE(conn, 1);
+    header.writeUInt32LE(userId, 5);
+    target.send(data ? Buffer.concat([header, data]) : header);
+  }
+
+  function handleBinaryTunnel(ws: WebSocket, buf: Buffer, currentClient: ConnectedClient): void {
+    if (!currentClient.connected || currentClient.ws !== ws) return;
+    if (buf.length < BIN_HEADER) return;
+    const op = buf[0];
+    if (op < BIN_OP_OPEN || op > BIN_OP_CLOSE_ALL) return;
+    const conn = buf.readUInt32LE(1);
+    const userId = buf.readUInt32LE(5);
+    const data = buf.length > BIN_HEADER ? buf.subarray(BIN_HEADER) : undefined;
+    if (op === BIN_OP_DATA && (!data || data.length > MAX_TUNNEL_CHUNK)) return;
+
+    const roomId = currentClient.room_id;
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room || room.game_session_status === 'relay_paused') return;
+
+    if (currentClient.is_host) {
+      if (!userId) return;
+      const target = clients.get(userId);
+      if (!target?.connected || target.room_id !== roomId || target.is_host) return;
+      sendBinaryTunnel(target.ws, op, conn, 0, data);
+    } else {
+      const host = clients.get(room.host_user_id);
+      if (!host?.connected || host.room_id !== roomId || !host.is_host) return;
+      sendBinaryTunnel(host.ws, op, conn, currentClient.user_id, data);
+    }
+  }
 
   function send(ws: WebSocket | null | undefined, message: WSMessage): void {
     if (ws?.readyState === WebSocket.OPEN) {
@@ -105,26 +142,6 @@ export function setupWebSocketServer(app: FastifyInstance) {
     broadcastRoomList();
   }
 
-  /** Send P2P_CONNECT to guest and host if both have registered UDP endpoints */
-  function tryP2PConnect(guest: ConnectedClient, hostUserId: number): void {
-    const host = clients.get(hostUserId);
-    if (!host?.connected || !guest.connected) return;
-    const gEp = guest.udp_endpoint;
-    const hEp = host.udp_endpoint;
-    if (!gEp?.ip || !hEp?.ip) return; // endpoints not yet discovered via UDP
-    // Tell guest to connect to host's UDP endpoint
-    send(guest.ws, {
-      type: WSMessageType.P2P_CONNECT,
-      payload: { peer_id: host.user_id, peer_ip: hEp.ip, peer_port: hEp.port },
-    });
-    // Tell host to connect to guest's UDP endpoint
-    send(host.ws, {
-      type: WSMessageType.P2P_CONNECT,
-      payload: { peer_id: guest.user_id, peer_ip: gEp.ip, peer_port: gEp.port },
-    });
-    console.log(`[P2P] Exchanged endpoints: host ${host.user_id}(${hEp.ip}:${hEp.port}) <-> guest ${guest.user_id}(${gEp.ip}:${gEp.port})`);
-  }
-
   function maybeResumeRelay(roomId: string): void {    const room = rooms.get(roomId);
     if (!room || room.game_session_status !== 'relay_paused') return;
     const members = getClientsInRoom(roomId);
@@ -162,10 +179,7 @@ export function setupWebSocketServer(app: FastifyInstance) {
     const username = member.username;
     const host = clients.get(room.host_user_id);
     if (host?.connected && host.room_id === roomId) {
-      send(host.ws, {
-        type: WSMessageType.TUNNEL,
-        payload: { from: member.user_id, conn: 0, op: 'close_all' },
-      });
+      sendBinaryTunnel(host.ws, BIN_OP_CLOSE_ALL, 0, member.user_id);
     }
     leaveRoom(roomId, member.user_id);
     member.room_id = undefined;
@@ -342,8 +356,6 @@ export function setupWebSocketServer(app: FastifyInstance) {
           payload: { action: 'player_joined', userId: currentClient.user_id, username: currentClient.username },
         });
         broadcastRoomList();
-        // ── P2P: exchange UDP endpoints with host ──
-        tryP2PConnect(currentClient, room.host_user_id);
         break;
       }
       case WSMessageType.LEAVE_ROOM:
@@ -381,64 +393,6 @@ export function setupWebSocketServer(app: FastifyInstance) {
         room.game_info_updated_at = undefined;
         room.game_session_status = getClientsInRoom(room.id).some((member) => !member.connected) ? 'relay_paused' : 'unavailable';
         notifyRoomClients(room.id, { type: WSMessageType.ROOM_GAMEINFO_LOST, payload: { roomId: room.id } });
-        break;
-      }
-      case WSMessageType.TUNNEL: {
-        const roomId = currentClient.room_id;
-        if (!roomId || !payload || !Number.isInteger(payload.conn) || payload.conn < 0 ||
-            !['open', 'data', 'close', 'close_all'].includes(payload.op)) {
-          sendError(ws, 'Invalid tunnel payload'); return;
-        }
-        if (payload.op === 'data' && !validBase64(payload.data, MAX_TUNNEL_CHUNK)) {
-          sendError(ws, 'Invalid or oversized tunnel data'); return;
-        }
-        if (payload.op !== 'data' && payload.data !== undefined) {
-          sendError(ws, 'Unexpected tunnel data'); return;
-        }
-        const room = rooms.get(roomId);
-        if (!room || room.game_session_status === 'relay_paused') return;
-        if (currentClient.is_host) {
-          if (!Number.isInteger(payload.to)) { sendError(ws, 'Host tunnel message requires target user'); return; }
-          const target = clients.get(payload.to);
-          if (!target?.connected || target.room_id !== roomId || target.is_host) return;
-          send(target.ws, { type: WSMessageType.TUNNEL, payload: { conn: payload.conn, op: payload.op, data: payload.data } });
-        } else {
-          const host = clients.get(room.host_user_id);
-          if (!host?.connected || host.room_id !== roomId || !host.is_host) return;
-          send(host.ws, {
-            type: WSMessageType.TUNNEL,
-            payload: { from: currentClient.user_id, conn: payload.conn, op: payload.op, data: payload.data },
-          });
-        }
-        break;
-      }
-      case WSMessageType.P2P_REGISTER: {
-        // Client is telling us their local UDP port; IP comes from the UDP discovery socket.
-        // If UDP discovery already ran, udp_endpoint is set. If not, we store the port and
-        // wait for the UDP packet to fill in the IP.
-        if (payload && Number.isInteger(payload.udp_port) && payload.udp_port > 0) {
-          if (!currentClient.udp_endpoint) {
-            // UDP discovery hasn't fired yet; pre-create with unknown IP so we can fill later
-            currentClient.udp_endpoint = { ip: '', port: payload.udp_port };
-          } else {
-            // Update port in case it changed
-            currentClient.udp_endpoint.port = payload.udp_port;
-          }
-          // If in a room, try to exchange endpoints with the other side now
-          if (currentClient.room_id) {
-            const r = rooms.get(currentClient.room_id);
-            if (r) {
-              if (currentClient.is_host) {
-                // Notify all guests in room
-                for (const member of getClientsInRoom(currentClient.room_id)) {
-                  if (!member.is_host) tryP2PConnect(member, currentClient.user_id);
-                }
-              } else {
-                tryP2PConnect(currentClient, r.host_user_id);
-              }
-            }
-          }
-        }
         break;
       }
       default:

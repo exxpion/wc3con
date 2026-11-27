@@ -28,10 +28,12 @@ export interface WSClientOptions {
   onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
   onTunnel: (msg: TunnelMessage) => void;
   onError: (error: string) => void;
-  // P2P signaling
-  onP2PConnect?: (peerId: number, peerIp: string, peerPort: number) => void;
 }
 
+// Binary tunnel frame: [1 op][4 conn LE][4 userId LE][data?]
+const BIN_OP: Record<TunnelOp, number> = { open: 1, data: 2, close: 3, close_all: 4 };
+const BIN_OP_TO_STR: Record<number, TunnelOp> = { 1: 'open', 2: 'data', 3: 'close', 4: 'close_all' };
+const BIN_HEADER = 9;
 const MAX_QUEUED_TUNNEL_BYTES = 8 * 1024 * 1024;
 
 export class WSRelayClient {
@@ -44,7 +46,7 @@ export class WSRelayClient {
   private currentRoomId: string | null = null;
   private pendingLeave = false;
   private relayPaused = false;
-  private tunnelQueue: Array<Record<string, unknown>> = [];
+  private tunnelQueue: Buffer[] = [];
   private queuedTunnelBytes = 0;
   private reportedUnknownTypes = new Set<string>();
 
@@ -62,9 +64,13 @@ export class WSRelayClient {
       this.sendRaw({ type: WSMessageType.AUTH, payload: { token: this.options.token } });
     });
 
-    ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+    ws.on('message', (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
       try {
         const raw = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as any);
+        if (isBinary) {
+          this.handleBinaryMessage(raw);
+          return;
+        }
         const message = JSON.parse(raw.toString('utf8'));
         if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
           throw new Error('Malformed server message');
@@ -166,32 +172,52 @@ export class WSRelayClient {
     this.send({ type: WSMessageType.ROOM_GAMEINFO_LOST, payload: {} });
   }
 
-  /** Tell relay server our local UDP port so it can build our P2P endpoint. */
-  registerP2P(udpPort: number): void {
-    this.send({ type: WSMessageType.P2P_REGISTER, payload: { udp_port: udpPort } });
-  }
-
   sendTunnel(msg: TunnelMessage): void {
-    const payload = {
-      to: msg.to,
-      conn: msg.conn,
-      op: msg.op,
-      data: msg.data ? msg.data.toString('base64') : undefined,
-    };
-    const message = { type: WSMessageType.TUNNEL, payload };
-    const size = msg.data?.length ?? 32;
-    if (this.relayPaused || !this.authenticated || !this.send(message)) {
+    const frame = this.buildBinaryFrame(msg);
+    const size = frame.length;
+    if (this.relayPaused || !this.authenticated || !this.sendBinaryFrame(frame)) {
       if (this.queuedTunnelBytes + size > MAX_QUEUED_TUNNEL_BYTES) {
         this.options.onError('Relay reconnect buffer is full; a game connection may be lost');
         return;
       }
-      this.tunnelQueue.push(message);
+      this.tunnelQueue.push(frame);
       this.queuedTunnelBytes += size;
     }
   }
 
   isConnected(): boolean {
     return this.authenticated && this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  private buildBinaryFrame(msg: TunnelMessage): Buffer {
+    const op = BIN_OP[msg.op];
+    const header = Buffer.allocUnsafe(BIN_HEADER);
+    header[0] = op;
+    header.writeUInt32LE(msg.conn, 1);
+    header.writeUInt32LE(msg.to ?? msg.from ?? 0, 5);
+    return msg.data ? Buffer.concat([header, msg.data]) : header;
+  }
+
+  private sendBinaryFrame(frame: Buffer): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(frame);
+    return true;
+  }
+
+  private handleBinaryMessage(buf: Buffer): void {
+    if (buf.length < BIN_HEADER) return;
+    const op = buf[0];
+    const tunnelOp = BIN_OP_TO_STR[op];
+    if (!tunnelOp) return;
+    const conn = buf.readUInt32LE(1);
+    const userId = buf.readUInt32LE(5);
+    const data = buf.length > BIN_HEADER ? buf.subarray(BIN_HEADER) : undefined;
+    this.options.onTunnel({
+      from: userId || undefined,
+      conn,
+      op: tunnelOp,
+      data,
+    });
   }
 
   private sendRaw(message: Record<string, unknown>): boolean {
@@ -210,14 +236,11 @@ export class WSRelayClient {
     const pending = this.tunnelQueue;
     this.tunnelQueue = [];
     this.queuedTunnelBytes = 0;
-    for (let index = 0; index < pending.length; index++) {
-      if (!this.sendRaw(pending[index])) {
-        const remainder = pending.slice(index);
+    for (let i = 0; i < pending.length; i++) {
+      if (!this.sendBinaryFrame(pending[i])) {
+        const remainder = pending.slice(i);
         this.tunnelQueue.push(...remainder);
-        this.queuedTunnelBytes += remainder.reduce((sum, item) => {
-          const payload = item.payload as any;
-          return sum + (typeof payload?.data === 'string' ? Math.floor(payload.data.length * 3 / 4) : 32);
-        }, 0);
+        this.queuedTunnelBytes += remainder.reduce((sum, f) => sum + f.length, 0);
         break;
       }
     }
@@ -303,27 +326,6 @@ export class WSRelayClient {
         this.relayPaused = false;
         this.flushTunnelQueue();
         this.options.onRelayState?.('resumed', payload);
-        break;
-      case WSMessageType.TUNNEL: {
-        if (!payload || !Number.isInteger(payload.conn) || !['open', 'data', 'close', 'close_all'].includes(payload.op)) return;
-        const packet = payload.data ? this.decodeBase64(payload.data, 700_000) : null;
-        if (payload.op === 'data' && !packet) {
-          this.options.onError('Relay sent an invalid or oversized tunnel data frame');
-          return;
-        }
-        this.options.onTunnel({
-          from: payload.from,
-          conn: payload.conn,
-          op: payload.op,
-          data: packet ?? undefined,
-        });
-        break;
-      }
-      case WSMessageType.P2P_CONNECT:
-        if (payload && Number.isInteger(payload.peer_id) &&
-            typeof payload.peer_ip === 'string' && Number.isInteger(payload.peer_port)) {
-          this.options.onP2PConnect?.(payload.peer_id, payload.peer_ip, payload.peer_port);
-        }
         break;
       case WSMessageType.ERROR:
         this.options.onError(payload?.error || 'Relay server error');
