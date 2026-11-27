@@ -74,7 +74,7 @@
     .auth-tab.active { background: var(--gold); border-color: var(--gold); color: #0c0c0c; font-weight: 600; }
 
     input {
-      box-sizing: border-box;
+      display: block; box-sizing: border-box;
       padding: 10px 12px;
       background: var(--bg3); border: 1px solid var(--border);
       border-radius: 6px; color: var(--text); font-size: 14px;
@@ -82,10 +82,10 @@
     }
     input:focus { border-color: var(--gold); }
     input[readonly] { cursor: pointer; }
-    .auth-box input, .modal-body input { display: block; width: 100%; }
-    .create-row input, .modal-row input { margin-bottom: 0; min-width: 0; flex-shrink: 1; }
-    #roomName { flex: 1; }
-    #mapName  { flex: 2; }
+    .auth-box input { width: 100%; }
+    .create-row input, .modal-row input { margin-bottom: 0; min-width: 0; width: 0; }
+    #roomName { flex: 1 1 0; }
+    #mapName  { flex: 2 1 0; }
 
     .link-btn {
       background: none; border: none; padding: 0;
