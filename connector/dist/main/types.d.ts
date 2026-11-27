@@ -17,6 +17,7 @@ export declare enum WSMessageType {
     TUNNEL = "tunnel",
     GAME_RELAY_PAUSED = "game_relay_paused",
     GAME_RELAY_RESUMED = "game_relay_resumed",
+    GAME_ENDED = "game_ended",
     ERROR = "error"
 }
 export interface WSMessage {

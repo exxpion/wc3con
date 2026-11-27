@@ -25,6 +25,7 @@ export interface WSClientOptions {
   onRoomList: (rooms: any[]) => void;
   onGameInfo: (gameInfo: Buffer) => void;
   onGameInfoLost?: () => void;
+  onGameEnded?: () => void;
   onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
   onTunnel: (msg: TunnelMessage) => void;
   onError: (error: string) => void;
@@ -172,6 +173,10 @@ export class WSRelayClient {
     this.send({ type: WSMessageType.ROOM_GAMEINFO_LOST, payload: {} });
   }
 
+  sendGameEnded(): void {
+    this.send({ type: WSMessageType.GAME_ENDED, payload: {} });
+  }
+
   sendTunnel(msg: TunnelMessage): void {
     const frame = this.buildBinaryFrame(msg);
     const size = frame.length;
@@ -317,6 +322,9 @@ export class WSRelayClient {
       }
       case WSMessageType.ROOM_GAMEINFO_LOST:
         this.options.onGameInfoLost?.();
+        break;
+      case WSMessageType.GAME_ENDED:
+        this.options.onGameEnded?.();
         break;
       case WSMessageType.GAME_RELAY_PAUSED:
         this.relayPaused = true;

@@ -395,6 +395,17 @@ export function setupWebSocketServer(app: FastifyInstance) {
         notifyRoomClients(room.id, { type: WSMessageType.ROOM_GAMEINFO_LOST, payload: { roomId: room.id } });
         break;
       }
+      case WSMessageType.GAME_ENDED: {
+        if (!currentClient.room_id || !currentClient.is_host) { sendError(ws, 'Host role required'); return; }
+        const room = rooms.get(currentClient.room_id);
+        if (!room) return;
+        const roomId = room.id;
+        notifyRoomClients(roomId, { type: WSMessageType.GAME_ENDED, payload: { roomId } });
+        setTimeout(() => {
+          closeRoomAndNotify(roomId, 'game_ended');
+        }, 10_000);
+        break;
+      }
       default:
         sendError(ws, `Unknown message type: ${type}`);
     }

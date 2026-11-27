@@ -5,6 +5,10 @@ const ws_1 = require("ws");
 const types_js_1 = require("../types.js");
 const protocol_1 = require("./protocol");
 exports.WS_PROTOCOL_VERSION = 1;
+// Binary tunnel frame: [1 op][4 conn LE][4 userId LE][data?]
+const BIN_OP = { open: 1, data: 2, close: 3, close_all: 4 };
+const BIN_OP_TO_STR = { 1: 'open', 2: 'data', 3: 'close', 4: 'close_all' };
+const BIN_HEADER = 9;
 const MAX_QUEUED_TUNNEL_BYTES = 8 * 1024 * 1024;
 class WSRelayClient {
     options;
@@ -34,9 +38,13 @@ class WSRelayClient {
             this.isConnecting = false;
             this.sendRaw({ type: types_js_1.WSMessageType.AUTH, payload: { token: this.options.token } });
         });
-        ws.on('message', (data) => {
+        ws.on('message', (data, isBinary) => {
             try {
                 const raw = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+                if (isBinary) {
+                    this.handleBinaryMessage(raw);
+                    return;
+                }
                 const message = JSON.parse(raw.toString('utf8'));
                 if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
                     throw new Error('Malformed server message');
@@ -136,26 +144,54 @@ class WSRelayClient {
     sendGameInfoLost() {
         this.send({ type: types_js_1.WSMessageType.ROOM_GAMEINFO_LOST, payload: {} });
     }
+    sendGameEnded() {
+        this.send({ type: types_js_1.WSMessageType.GAME_ENDED, payload: {} });
+    }
     sendTunnel(msg) {
-        const payload = {
-            to: msg.to,
-            conn: msg.conn,
-            op: msg.op,
-            data: msg.data ? msg.data.toString('base64') : undefined,
-        };
-        const message = { type: types_js_1.WSMessageType.TUNNEL, payload };
-        const size = msg.data?.length ?? 32;
-        if (this.relayPaused || !this.authenticated || !this.send(message)) {
+        const frame = this.buildBinaryFrame(msg);
+        const size = frame.length;
+        if (this.relayPaused || !this.authenticated || !this.sendBinaryFrame(frame)) {
             if (this.queuedTunnelBytes + size > MAX_QUEUED_TUNNEL_BYTES) {
                 this.options.onError('Relay reconnect buffer is full; a game connection may be lost');
                 return;
             }
-            this.tunnelQueue.push(message);
+            this.tunnelQueue.push(frame);
             this.queuedTunnelBytes += size;
         }
     }
     isConnected() {
         return this.authenticated && this.ws !== null && this.ws.readyState === ws_1.WebSocket.OPEN;
+    }
+    buildBinaryFrame(msg) {
+        const op = BIN_OP[msg.op];
+        const header = Buffer.allocUnsafe(BIN_HEADER);
+        header[0] = op;
+        header.writeUInt32LE(msg.conn, 1);
+        header.writeUInt32LE(msg.to ?? msg.from ?? 0, 5);
+        return msg.data ? Buffer.concat([header, msg.data]) : header;
+    }
+    sendBinaryFrame(frame) {
+        if (!this.ws || this.ws.readyState !== ws_1.WebSocket.OPEN)
+            return false;
+        this.ws.send(frame);
+        return true;
+    }
+    handleBinaryMessage(buf) {
+        if (buf.length < BIN_HEADER)
+            return;
+        const op = buf[0];
+        const tunnelOp = BIN_OP_TO_STR[op];
+        if (!tunnelOp)
+            return;
+        const conn = buf.readUInt32LE(1);
+        const userId = buf.readUInt32LE(5);
+        const data = buf.length > BIN_HEADER ? buf.subarray(BIN_HEADER) : undefined;
+        this.options.onTunnel({
+            from: userId || undefined,
+            conn,
+            op: tunnelOp,
+            data,
+        });
     }
     sendRaw(message) {
         if (this.ws?.readyState !== ws_1.WebSocket.OPEN)
@@ -174,14 +210,11 @@ class WSRelayClient {
         const pending = this.tunnelQueue;
         this.tunnelQueue = [];
         this.queuedTunnelBytes = 0;
-        for (let index = 0; index < pending.length; index++) {
-            if (!this.sendRaw(pending[index])) {
-                const remainder = pending.slice(index);
+        for (let i = 0; i < pending.length; i++) {
+            if (!this.sendBinaryFrame(pending[i])) {
+                const remainder = pending.slice(i);
                 this.tunnelQueue.push(...remainder);
-                this.queuedTunnelBytes += remainder.reduce((sum, item) => {
-                    const payload = item.payload;
-                    return sum + (typeof payload?.data === 'string' ? Math.floor(payload.data.length * 3 / 4) : 32);
-                }, 0);
+                this.queuedTunnelBytes += remainder.reduce((sum, f) => sum + f.length, 0);
                 break;
             }
         }
@@ -264,6 +297,9 @@ class WSRelayClient {
             case types_js_1.WSMessageType.ROOM_GAMEINFO_LOST:
                 this.options.onGameInfoLost?.();
                 break;
+            case types_js_1.WSMessageType.GAME_ENDED:
+                this.options.onGameEnded?.();
+                break;
             case types_js_1.WSMessageType.GAME_RELAY_PAUSED:
                 this.relayPaused = true;
                 this.options.onRelayState?.('paused', payload);
@@ -273,22 +309,6 @@ class WSRelayClient {
                 this.flushTunnelQueue();
                 this.options.onRelayState?.('resumed', payload);
                 break;
-            case types_js_1.WSMessageType.TUNNEL: {
-                if (!payload || !Number.isInteger(payload.conn) || !['open', 'data', 'close', 'close_all'].includes(payload.op))
-                    return;
-                const packet = payload.data ? this.decodeBase64(payload.data, 700_000) : null;
-                if (payload.op === 'data' && !packet) {
-                    this.options.onError('Relay sent an invalid or oversized tunnel data frame');
-                    return;
-                }
-                this.options.onTunnel({
-                    from: payload.from,
-                    conn: payload.conn,
-                    op: payload.op,
-                    data: packet ?? undefined,
-                });
-                break;
-            }
             case types_js_1.WSMessageType.ERROR:
                 this.options.onError(payload?.error || 'Relay server error');
                 break;

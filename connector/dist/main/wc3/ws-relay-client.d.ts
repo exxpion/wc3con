@@ -20,6 +20,7 @@ export interface WSClientOptions {
     onRoomList: (rooms: any[]) => void;
     onGameInfo: (gameInfo: Buffer) => void;
     onGameInfoLost?: () => void;
+    onGameEnded?: () => void;
     onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
     onTunnel: (msg: TunnelMessage) => void;
     onError: (error: string) => void;
@@ -47,8 +48,12 @@ export declare class WSRelayClient {
     requestRoomList(): void;
     sendGameInfo(packet: Buffer): void;
     sendGameInfoLost(): void;
+    sendGameEnded(): void;
     sendTunnel(msg: TunnelMessage): void;
     isConnected(): boolean;
+    private buildBinaryFrame;
+    private sendBinaryFrame;
+    private handleBinaryMessage;
     private sendRaw;
     private send;
     private flushTunnelQueue;

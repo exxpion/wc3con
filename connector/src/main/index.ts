@@ -19,6 +19,11 @@ let guestAnnounced = false;
 let hostGamePort = 0;
 let currentUserId: number | null = null;
 
+// Отслеживание завершения игры (хост)
+let lastGameInfoTime = 0;
+let gameEndedTimer: NodeJS.Timeout | null = null;
+const GAME_END_TIMEOUT_MS = 15_000; // 15 сек без GAMEINFO = игра закончилась
+
 const API_URL = process.env.WC3_SERVER_HTTP_URL || 'http://130.78.13.15:3000';
 const SERVER_URL = process.env.WC3_SERVER_WS_URL || API_URL.replace(/^http/, 'ws') + '/ws';
 // Порт самого Warcraft III. Коннектор его НЕ занимает — он только обращается к WC3 по этому порту.
@@ -61,6 +66,9 @@ function resetRoomState() {
   udpBroadcaster?.reset();
   tcpProxy?.closeAll();
   hostTunnel?.closeAll();
+  if (gameEndedTimer) clearTimeout(gameEndedTimer);
+  gameEndedTimer = null;
+  lastGameInfoTime = 0;
   role = null;
   hostGameFound = false;
   guestAnnounced = false;
@@ -106,6 +114,26 @@ async function startNetworkStack(): Promise<{ success: boolean; error?: string }
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
+  }
+}
+
+// ─── Отслеживание завершения игры ───────────────────────────────────────────
+
+function resetGameEndedTimer() {
+  if (gameEndedTimer) clearTimeout(gameEndedTimer);
+  gameEndedTimer = null;
+  lastGameInfoTime = Date.now();
+  
+  if (role === 'host') {
+    gameEndedTimer = setTimeout(() => {
+      if (role === 'host' && lastGameInfoTime > 0 && Date.now() - lastGameInfoTime >= GAME_END_TIMEOUT_MS) {
+        console.log('[GAME] Host detected game end after 15s without GAMEINFO');
+        wsClient?.sendGameEnded();
+        resetRoomState();
+        sendToRenderer('connector:room-left');
+        notice('Игра завершена — лобби закрыто');
+      }
+    }, GAME_END_TIMEOUT_MS);
   }
 }
 
@@ -266,6 +294,9 @@ function connectWSClient(token: string) {
     // Хост прислал (свежий) GAMEINFO
     onGameInfo: (gameInfo) => {
       console.log(`[GAMEINFO RECEIVED] role=${role}, tcpProxy=${!!tcpProxy}, udpBroadcaster=${!!udpBroadcaster}, guestAnnounced=${guestAnnounced}, gameInfoSize=${gameInfo.length}`);
+      if (role === 'host') {
+        resetGameEndedTimer();
+      }
       if (role !== 'guest' || !tcpProxy || !udpBroadcaster) {
         console.warn('[GAMEINFO SKIP] Not in guest mode or network stack not ready');
         return;
@@ -290,6 +321,18 @@ function connectWSClient(token: string) {
         udpBroadcaster?.reset();
         guestAnnounced = false;
         notice('Хост закрыл или перезапустил игру. Ожидаем новую LAN-сессию');
+      }
+      if (role === 'host') {
+        resetGameEndedTimer();
+      }
+    },
+
+    onGameEnded: () => {
+      if (role === 'host') {
+        console.log('[GAME] Server confirmed game ended');
+        resetRoomState();
+        sendToRenderer('connector:room-left');
+        notice('Игра завершена — лобби закрыто');
       }
     },
 
