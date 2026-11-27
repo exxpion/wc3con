@@ -24,6 +24,7 @@ class WSRelayClient {
     tunnelQueue = [];
     queuedTunnelBytes = 0;
     reportedUnknownTypes = new Set();
+    pingTimestamp = null;
     constructor(options) {
         this.options = options;
     }
@@ -149,6 +150,10 @@ class WSRelayClient {
     }
     sendChatMessage(text) {
         this.send({ type: types_js_1.WSMessageType.CHAT_MESSAGE, payload: { text } });
+    }
+    sendPing() {
+        this.pingTimestamp = Date.now();
+        this.send({ type: types_js_1.WSMessageType.PING, payload: { ts: this.pingTimestamp } });
     }
     sendTunnel(msg) {
         const frame = this.buildBinaryFrame(msg);
@@ -314,6 +319,13 @@ class WSRelayClient {
             case types_js_1.WSMessageType.CHAT_HISTORY:
                 if (payload && Array.isArray(payload.messages)) {
                     this.options.onChatHistory?.(payload.messages);
+                }
+                break;
+            case types_js_1.WSMessageType.PONG:
+                if (typeof payload?.ts === 'number' && this.pingTimestamp !== null) {
+                    const rtt = Date.now() - this.pingTimestamp;
+                    this.pingTimestamp = null;
+                    this.options.onPingResult?.(rtt);
                 }
                 break;
             case types_js_1.WSMessageType.GAME_RELAY_PAUSED:

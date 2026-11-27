@@ -25,6 +25,8 @@ var WSMessageType;
     WSMessageType["GAME_ENDED"] = "game_ended";
     WSMessageType["CHAT_MESSAGE"] = "chat_message";
     WSMessageType["CHAT_HISTORY"] = "chat_history";
+    WSMessageType["PING"] = "ping";
+    WSMessageType["PONG"] = "pong";
     WSMessageType["ERROR"] = "error";
 })(WSMessageType || (exports.WSMessageType = WSMessageType = {}));
 //# sourceMappingURL=types.js.map

@@ -30,6 +30,7 @@ export interface WSClientOptions {
   onChatHistory?: (messages: Array<{ userId: number; username: string; text: string; ts: number }>) => void;
   onRoomUpdate?: (action: string, userId: number, username: string) => void;
   onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
+  onPingResult?: (rtt: number) => void;
   onTunnel: (msg: TunnelMessage) => void;
   onError: (error: string) => void;
 }
@@ -53,6 +54,7 @@ export class WSRelayClient {
   private tunnelQueue: Buffer[] = [];
   private queuedTunnelBytes = 0;
   private reportedUnknownTypes = new Set<string>();
+  private pingTimestamp: number | null = null;
 
   constructor(private options: WSClientOptions) {}
 
@@ -182,6 +184,11 @@ export class WSRelayClient {
 
   sendChatMessage(text: string): void {
     this.send({ type: WSMessageType.CHAT_MESSAGE, payload: { text } });
+  }
+
+  sendPing(): void {
+    this.pingTimestamp = Date.now();
+    this.send({ type: WSMessageType.PING, payload: { ts: this.pingTimestamp } });
   }
 
   sendTunnel(msg: TunnelMessage): void {
@@ -344,6 +351,13 @@ export class WSRelayClient {
       case WSMessageType.CHAT_HISTORY:
         if (payload && Array.isArray(payload.messages)) {
           this.options.onChatHistory?.(payload.messages);
+        }
+        break;
+      case WSMessageType.PONG:
+        if (typeof payload?.ts === 'number' && this.pingTimestamp !== null) {
+          const rtt = Date.now() - this.pingTimestamp;
+          this.pingTimestamp = null;
+          this.options.onPingResult?.(rtt);
         }
         break;
       case WSMessageType.GAME_RELAY_PAUSED:

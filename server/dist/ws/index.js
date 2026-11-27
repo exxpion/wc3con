@@ -1,14 +1,20 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { WSMessageType, } from '../types/index.js';
-import { createRoom, joinRoom, leaveRoom, closeRoom, getRoomList, getClientsInRoom, getConnectedClientsInRoom, clients, rooms, roomGameInfo, } from '../game/rooms.js';
+import { createRoom, joinRoom, leaveRoom, closeRoom, getRoomList, getClientsInRoom, getConnectedClientsInRoom, clients, rooms, roomGameInfo, roomChat, roomChatJoinedAt, CHAT_MAX_MESSAGES, CHAT_MAX_LENGTH, } from '../game/rooms.js';
 const PROTOCOL_VERSION = 1;
 const RECONNECT_GRACE_MS = 180_000;
 const GAMEINFO_MAX_AGE_MS = 9_000;
 const expiredRoomByUser = new Map();
 const MAX_TUNNEL_CHUNK = 700_000;
 const MAX_GAMEINFO_BASE64 = 4096;
+// Binary tunnel frame: [1 op][4 conn LE][4 userId LE][data?]
+const BIN_OP_OPEN = 1;
+const BIN_OP_DATA = 2;
+const BIN_OP_CLOSE = 3;
+const BIN_OP_CLOSE_ALL = 4;
+const BIN_HEADER = 9;
 export function setupWebSocketServer(app) {
-    const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000 });
+    const wss = new WebSocketServer({ noServer: true, maxPayload: 800_000, perMessageDeflate: false });
     app.server.on('upgrade', (request, socket, head) => {
         if (request.url === '/ws') {
             wss.handleUpgrade(request, socket, head, (ws) => wss.emit('connection', ws, request));
@@ -18,9 +24,14 @@ export function setupWebSocketServer(app) {
     });
     wss.on('connection', (ws) => {
         let client = null;
-        ws.on('message', async (data) => {
+        ws.on('message', async (data, isBinary) => {
             try {
                 const raw = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+                if (isBinary) {
+                    if (client)
+                        handleBinaryTunnel(ws, raw, client);
+                    return;
+                }
                 const message = JSON.parse(raw.toString('utf8'));
                 if (!message || typeof message.type !== 'string')
                     throw new Error('Message must contain a type');
@@ -45,6 +56,49 @@ export function setupWebSocketServer(app) {
         });
         ws.on('error', (err) => app.log.warn({ err }, 'WebSocket transport error'));
     });
+    function sendBinaryTunnel(target, op, conn, userId, data) {
+        if (!target || target.readyState !== WebSocket.OPEN)
+            return;
+        const header = Buffer.allocUnsafe(BIN_HEADER);
+        header[0] = op;
+        header.writeUInt32LE(conn, 1);
+        header.writeUInt32LE(userId, 5);
+        target.send(data ? Buffer.concat([header, data]) : header);
+    }
+    function handleBinaryTunnel(ws, buf, currentClient) {
+        if (!currentClient.connected || currentClient.ws !== ws)
+            return;
+        if (buf.length < BIN_HEADER)
+            return;
+        const op = buf[0];
+        if (op < BIN_OP_OPEN || op > BIN_OP_CLOSE_ALL)
+            return;
+        const conn = buf.readUInt32LE(1);
+        const userId = buf.readUInt32LE(5);
+        const data = buf.length > BIN_HEADER ? buf.subarray(BIN_HEADER) : undefined;
+        if (op === BIN_OP_DATA && (!data || data.length > MAX_TUNNEL_CHUNK))
+            return;
+        const roomId = currentClient.room_id;
+        if (!roomId)
+            return;
+        const room = rooms.get(roomId);
+        if (!room || room.game_session_status === 'relay_paused')
+            return;
+        if (currentClient.is_host) {
+            if (!userId)
+                return;
+            const target = clients.get(userId);
+            if (!target?.connected || target.room_id !== roomId || target.is_host)
+                return;
+            sendBinaryTunnel(target.ws, op, conn, 0, data);
+        }
+        else {
+            const host = clients.get(room.host_user_id);
+            if (!host?.connected || host.room_id !== roomId || !host.is_host)
+                return;
+            sendBinaryTunnel(host.ws, op, conn, currentClient.user_id, data);
+        }
+    }
     function send(ws, message) {
         if (ws?.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ ...message, protocolVersion: PROTOCOL_VERSION }));
@@ -124,10 +178,7 @@ export function setupWebSocketServer(app) {
         const username = member.username;
         const host = clients.get(room.host_user_id);
         if (host?.connected && host.room_id === roomId) {
-            send(host.ws, {
-                type: WSMessageType.TUNNEL,
-                payload: { from: member.user_id, conn: 0, op: 'close_all' },
-            });
+            sendBinaryTunnel(host.ws, BIN_OP_CLOSE_ALL, 0, member.user_id);
         }
         leaveRoom(roomId, member.user_id);
         member.room_id = undefined;
@@ -239,8 +290,17 @@ export function setupWebSocketServer(app) {
                             ? info : undefined;
                         send(ws, {
                             type: WSMessageType.ROOM_RESTORED,
-                            payload: { room, role: restored.is_host ? 'host' : 'guest', game_info: freshInfo },
+                            payload: {
+                                room, role: restored.is_host ? 'host' : 'guest', game_info: freshInfo,
+                                members: getClientsInRoom(room.id).map((m) => ({ userId: m.user_id, username: m.username })),
+                            },
                         });
+                        // Отправить сообщения которые пришли пока пользователь был в комнате (включая disconnect)
+                        const userJoinedAt = roomChatJoinedAt.get(room.id)?.get(restored.user_id) ?? 0;
+                        const missed = (roomChat.get(room.id) ?? []).filter((m) => m.ts > userJoinedAt);
+                        if (missed.length > 0) {
+                            send(ws, { type: WSMessageType.CHAT_HISTORY, payload: { messages: missed } });
+                        }
                         notifyRoomClients(room.id, {
                             type: WSMessageType.ROOM_UPDATE,
                             payload: { action: 'player_reconnected', userId: restored.user_id, username: restored.username },
@@ -277,6 +337,10 @@ export function setupWebSocketServer(app) {
                 const room = createRoom(payload.name.trim(), payload.map.trim(), currentClient.user_id, payload.maxPlayers);
                 currentClient.room_id = room.id;
                 currentClient.is_host = true;
+                // Хост тоже участник чата — фиксируем время входа
+                if (!roomChatJoinedAt.has(room.id))
+                    roomChatJoinedAt.set(room.id, new Map());
+                roomChatJoinedAt.get(room.id).set(currentClient.user_id, room.created_at);
                 send(ws, { type: WSMessageType.ROOM_CREATED, payload: room });
                 broadcastRoomList();
                 break;
@@ -295,10 +359,15 @@ export function setupWebSocketServer(app) {
                 }
                 currentClient.room_id = room.id;
                 currentClient.is_host = false;
+                // Запомнить момент входа, чтобы при reconnect отправить пропущенные сообщения
+                if (!roomChatJoinedAt.has(room.id))
+                    roomChatJoinedAt.set(room.id, new Map());
+                roomChatJoinedAt.get(room.id).set(currentClient.user_id, Date.now());
                 const info = roomGameInfo.get(room.id);
                 const freshInfo = info && room.game_info_updated_at && Date.now() - room.game_info_updated_at <= GAMEINFO_MAX_AGE_MS
                     ? info : undefined;
-                send(ws, { type: WSMessageType.ROOM_JOINED, payload: { ...room, game_info: freshInfo } });
+                const members = getClientsInRoom(room.id).map((m) => ({ userId: m.user_id, username: m.username }));
+                send(ws, { type: WSMessageType.ROOM_JOINED, payload: { ...room, game_info: freshInfo, members } });
                 notifyRoomClients(room.id, {
                     type: WSMessageType.ROOM_UPDATE,
                     payload: { action: 'player_joined', userId: currentClient.user_id, username: currentClient.username },
@@ -351,43 +420,52 @@ export function setupWebSocketServer(app) {
                 notifyRoomClients(room.id, { type: WSMessageType.ROOM_GAMEINFO_LOST, payload: { roomId: room.id } });
                 break;
             }
-            case WSMessageType.TUNNEL: {
+            case WSMessageType.GAME_ENDED: {
+                if (!currentClient.room_id || !currentClient.is_host) {
+                    sendError(ws, 'Host role required');
+                    return;
+                }
+                const room = rooms.get(currentClient.room_id);
+                if (!room)
+                    return;
+                const roomId = room.id;
+                notifyRoomClients(roomId, { type: WSMessageType.GAME_ENDED, payload: { roomId } });
+                setTimeout(() => {
+                    closeRoomAndNotify(roomId, 'game_ended');
+                }, 10_000);
+                break;
+            }
+            case WSMessageType.CHAT_MESSAGE: {
+                if (!currentClient.room_id) {
+                    sendError(ws, 'You are not in a room');
+                    return;
+                }
+                const text = typeof payload?.text === 'string' ? payload.text.trim() : '';
+                if (!text || text.length > CHAT_MAX_LENGTH) {
+                    sendError(ws, 'Invalid chat message');
+                    return;
+                }
                 const roomId = currentClient.room_id;
-                if (!roomId || !payload || !Number.isInteger(payload.conn) || payload.conn < 0 ||
-                    !['open', 'data', 'close', 'close_all'].includes(payload.op)) {
-                    sendError(ws, 'Invalid tunnel payload');
-                    return;
-                }
-                if (payload.op === 'data' && !validBase64(payload.data, MAX_TUNNEL_CHUNK)) {
-                    sendError(ws, 'Invalid or oversized tunnel data');
-                    return;
-                }
-                if (payload.op !== 'data' && payload.data !== undefined) {
-                    sendError(ws, 'Unexpected tunnel data');
-                    return;
-                }
                 const room = rooms.get(roomId);
-                if (!room || room.game_session_status === 'relay_paused')
+                if (!room)
                     return;
-                if (currentClient.is_host) {
-                    if (!Number.isInteger(payload.to)) {
-                        sendError(ws, 'Host tunnel message requires target user');
-                        return;
-                    }
-                    const target = clients.get(payload.to);
-                    if (!target?.connected || target.room_id !== roomId || target.is_host)
-                        return;
-                    send(target.ws, { type: WSMessageType.TUNNEL, payload: { conn: payload.conn, op: payload.op, data: payload.data } });
+                const history = roomChat.get(roomId) ?? [];
+                history.push({ userId: currentClient.user_id, username: currentClient.username, text, ts: Date.now() });
+                if (history.length > CHAT_MAX_MESSAGES)
+                    history.splice(0, history.length - CHAT_MAX_MESSAGES);
+                roomChat.set(roomId, history);
+                notifyRoomClients(roomId, {
+                    type: WSMessageType.CHAT_MESSAGE,
+                    payload: { userId: currentClient.user_id, username: currentClient.username, text, ts: Date.now() },
+                });
+                break;
+            }
+            case WSMessageType.PING: {
+                if (typeof payload?.ts !== 'number') {
+                    sendError(ws, 'Invalid ping payload');
+                    return;
                 }
-                else {
-                    const host = clients.get(room.host_user_id);
-                    if (!host?.connected || host.room_id !== roomId || !host.is_host)
-                        return;
-                    send(host.ws, {
-                        type: WSMessageType.TUNNEL,
-                        payload: { from: currentClient.user_id, conn: payload.conn, op: payload.op, data: payload.data },
-                    });
-                }
+                send(ws, { type: WSMessageType.PONG, payload: { ts: payload.ts } });
                 break;
             }
             default:

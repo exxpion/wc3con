@@ -55,6 +55,8 @@ let currentUserId = null;
 let currentUsername = null;
 // Участники текущей комнаты (для окна чата)
 let roomPlayers = [];
+// Текущий пинг (RTT в миллисекундах)
+let currentPing = null;
 // Отслеживание завершения игры (хост)
 let lastGameInfoTime = 0;
 let gameEndedTimer = null;
@@ -292,8 +294,10 @@ function connectWSClient(token) {
             console.log('Joined room:', roomId);
             role = 'guest';
             guestAnnounced = false;
+            currentPing = null;
             roomPlayers = Array.isArray(room.members) ? room.members : [];
             openChatWindow();
+            wsClient?.sendPing();
             if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
                 udpBroadcaster.announce(gameInfo, tcpProxy.port);
                 guestAnnounced = true;
@@ -313,11 +317,15 @@ function connectWSClient(token) {
         onRoomRestored: (roomId, room, gameInfo) => {
             console.log('[ROOM] restored after relay reconnect:', roomId);
             role = room.host_user_id === currentUserId ? 'host' : 'guest';
+            currentPing = null;
             if (Array.isArray(room.members)) {
                 roomPlayers = room.members;
                 sendToChat('chat:players', roomPlayers);
             }
             openChatWindow();
+            if (role === 'guest') {
+                wsClient?.sendPing();
+            }
             if (role === 'host') {
                 hostGameFound = false;
                 hostGamePort = 0;
@@ -437,6 +445,10 @@ function connectWSClient(token) {
                     });
                 }
             }
+        },
+        onPingResult: (rtt) => {
+            currentPing = rtt;
+            sendToRenderer('connector:ping', rtt);
         },
         onTunnel: handleTunnel,
         onError: (error) => {
@@ -624,6 +636,10 @@ electron_1.ipcMain.handle('chat:send', (_e, text) => {
 });
 electron_1.ipcMain.handle('chat:open', () => {
     openChatWindow();
+});
+electron_1.ipcMain.handle('connector:send-ping', () => {
+    wsClient?.sendPing();
+    return { success: true };
 });
 electron_1.app.whenReady().then(createWindow);
 electron_1.app.on('window-all-closed', () => {

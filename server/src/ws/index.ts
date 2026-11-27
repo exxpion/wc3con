@@ -440,6 +440,11 @@ export function setupWebSocketServer(app: FastifyInstance) {
         });
         break;
       }
+      case WSMessageType.PING: {
+        if (typeof payload?.ts !== 'number') { sendError(ws, 'Invalid ping payload'); return; }
+        send(ws, { type: WSMessageType.PONG, payload: { ts: payload.ts } });
+        break;
+      }
       default:
         sendError(ws, `Unknown message type: ${type}`);
     }

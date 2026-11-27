@@ -47,4 +47,6 @@ body {
 .btn-sm.btn-danger { background: var(--red); color: #fff; }
 .btn-sm.btn-chat { background: var(--bg3); color: var(--gold); border: 1px solid var(--gold); }
 .btn-sm.btn-chat:hover { background: var(--gold-bg); }
+.btn-sm.btn-secondary { background: var(--bg3); color: var(--text-dim); border: 1px solid var(--border); }
+.btn-sm.btn-secondary:hover { color: var(--text); background: var(--border); }
 .btn-sm:disabled { background: #333; color: #666; cursor: not-allowed; opacity: 1; }

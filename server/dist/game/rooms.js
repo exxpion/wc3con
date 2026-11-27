@@ -2,6 +2,12 @@ import { randomBytes } from 'crypto';
 export const rooms = new Map();
 export const clients = new Map();
 export const roomGameInfo = new Map();
+// Чат комнаты: хранится пока комната жива, удаляется при закрытии
+export const roomChat = new Map();
+// Время входа каждого пользователя в комнату: chat виден только с этого момента
+export const roomChatJoinedAt = new Map();
+export const CHAT_MAX_MESSAGES = 50;
+export const CHAT_MAX_LENGTH = 512;
 export function generateRoomId() {
     return randomBytes(8).toString('hex');
 }
@@ -36,6 +42,8 @@ export function leaveRoom(roomId, userId) {
 export function closeRoom(roomId) {
     rooms.delete(roomId);
     roomGameInfo.delete(roomId);
+    roomChat.delete(roomId);
+    roomChatJoinedAt.delete(roomId);
 }
 export function getRoomList() {
     return Array.from(rooms.values()).filter((room) => room.status === 'waiting');

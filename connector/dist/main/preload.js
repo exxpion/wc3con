@@ -18,6 +18,7 @@ electron_1.contextBridge.exposeInMainWorld('connector', {
     selectMapPath: () => electron_1.ipcRenderer.invoke('connector:select-map-path'),
     launchWC3: (path) => electron_1.ipcRenderer.invoke('connector:launch-wc3', path),
     openChat: () => electron_1.ipcRenderer.invoke('chat:open'),
+    sendPing: () => electron_1.ipcRenderer.invoke('connector:send-ping'),
     // ── Events from main process ──────────────────────────────────────────────
     onStatus: (cb) => electron_1.ipcRenderer.on('connector:status', (_e, data) => cb(data)),
     onRoomList: (cb) => electron_1.ipcRenderer.on('connector:room-list', (_e, rooms) => cb(rooms)),
@@ -27,6 +28,7 @@ electron_1.contextBridge.exposeInMainWorld('connector', {
     onNotice: (cb) => electron_1.ipcRenderer.on('connector:notice', (_e, message) => cb(message)),
     onBanner: (cb) => electron_1.ipcRenderer.on('connector:banner', (_e, data) => cb(data)),
     onRoomLeft: (cb) => electron_1.ipcRenderer.on('connector:room-left', () => cb()),
+    onPing: (cb) => electron_1.ipcRenderer.on('connector:ping', (_e, rtt) => cb(rtt)),
     onError: (cb) => electron_1.ipcRenderer.on('connector:error', (_e, error) => cb(error)),
 });
 //# sourceMappingURL=preload.js.map

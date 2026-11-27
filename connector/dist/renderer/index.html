@@ -196,7 +196,7 @@
     .toast.show { opacity: 1; }
     .toast.success { background: rgba(76,175,103,0.12); color: #7de0a0; border-color: var(--green); }
   </style>
-  <link rel="stylesheet" crossorigin href="./assets/shared-styles-C75wpqMP.css">
+  <link rel="stylesheet" crossorigin href="./assets/shared-styles-DmG-ori_.css">
 </head>
 <body>
 
@@ -281,8 +281,12 @@
     <div>
       <div class="room-info" id="bannerTitle">Вы в комнате</div>
       <div class="hint" id="bannerHint">Ожидаем создания LAN-игры хостом в Warcraft III 1.26</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px;">
+        Пинг: <span id="pingValue">—</span> мс
+      </div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn-sm btn-secondary" onclick="refreshPing()" title="Измерить пинг">🔄</button>
       <button class="btn-sm btn-chat" onclick="openChat()">💬 Чат</button>
       <button class="btn-sm btn-success" onclick="launchWC3()">Запустить WC3</button>
       <button class="btn-sm btn-danger" onclick="doLeave()">Выйти</button>
@@ -523,7 +527,14 @@
     document.getElementById('bannerHint').textContent = hint;
   });
   window.connector.onRoomLeft(() => setInRoom(false));
+  window.connector.onPing((rtt) => {
+    document.getElementById('pingValue').textContent = rtt.toString();
+  });
   window.connector.onError(showToast);
+
+  function refreshPing() {
+    window.connector.sendPing();
+  }
 
   function setInRoom(state) {
     inRoom = state;

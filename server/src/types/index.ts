@@ -73,5 +73,6 @@ export enum WSMessageType {
   GAME_ENDED = 'game_ended',
   CHAT_MESSAGE = 'chat_message',
   CHAT_HISTORY = 'chat_history',
+  PING = 'ping', PONG = 'pong',
   ERROR = 'error',
 }

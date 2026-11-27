@@ -18,6 +18,11 @@ export var WSMessageType;
     WSMessageType["TUNNEL"] = "tunnel";
     WSMessageType["GAME_RELAY_PAUSED"] = "game_relay_paused";
     WSMessageType["GAME_RELAY_RESUMED"] = "game_relay_resumed";
+    WSMessageType["GAME_ENDED"] = "game_ended";
+    WSMessageType["CHAT_MESSAGE"] = "chat_message";
+    WSMessageType["CHAT_HISTORY"] = "chat_history";
+    WSMessageType["PING"] = "ping";
+    WSMessageType["PONG"] = "pong";
     WSMessageType["ERROR"] = "error";
 })(WSMessageType || (WSMessageType = {}));
 //# sourceMappingURL=index.js.map

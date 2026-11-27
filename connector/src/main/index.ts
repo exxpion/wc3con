@@ -22,6 +22,8 @@ let currentUserId: number | null = null;
 let currentUsername: string | null = null;
 // Участники текущей комнаты (для окна чата)
 let roomPlayers: Array<{ userId: number; username: string }> = [];
+// Текущий пинг (RTT в миллисекундах)
+let currentPing: number | null = null;
 
 // Отслеживание завершения игры (хост)
 let lastGameInfoTime = 0;
@@ -283,8 +285,10 @@ function connectWSClient(token: string) {
       console.log('Joined room:', roomId);
       role = 'guest';
       guestAnnounced = false;
+      currentPing = null;
       roomPlayers = Array.isArray(room.members) ? room.members : [];
       openChatWindow();
+      wsClient?.sendPing();
 
       if (room.game_session_status !== 'relay_paused' && gameInfo && tcpProxy && udpBroadcaster) {
         udpBroadcaster.announce(gameInfo, tcpProxy.port);
@@ -305,11 +309,15 @@ function connectWSClient(token: string) {
     onRoomRestored: (roomId, room, gameInfo) => {
       console.log('[ROOM] restored after relay reconnect:', roomId);
       role = room.host_user_id === currentUserId ? 'host' : 'guest';
+      currentPing = null;
       if (Array.isArray(room.members)) {
         roomPlayers = room.members;
         sendToChat('chat:players', roomPlayers);
       }
       openChatWindow();
+      if (role === 'guest') {
+        wsClient?.sendPing();
+      }
       if (role === 'host') {
         hostGameFound = false;
         hostGamePort = 0;
@@ -433,6 +441,11 @@ function connectWSClient(token: string) {
           });
         }
       }
+    },
+
+    onPingResult: (rtt) => {
+      currentPing = rtt;
+      sendToRenderer('connector:ping', rtt);
     },
 
     onTunnel: handleTunnel,
@@ -637,6 +650,11 @@ ipcMain.handle('chat:send', (_e, text: string) => {
 
 ipcMain.handle('chat:open', () => {
   openChatWindow();
+});
+
+ipcMain.handle('connector:send-ping', () => {
+  wsClient?.sendPing();
+  return { success: true };
 });
 
 app.whenReady().then(createWindow);

@@ -43,6 +43,9 @@ contextBridge.exposeInMainWorld('connector', {
   openChat: () =>
     ipcRenderer.invoke('chat:open'),
 
+  sendPing: () =>
+    ipcRenderer.invoke('connector:send-ping'),
+
   // ── Events from main process ──────────────────────────────────────────────
   onStatus: (cb: (data: { connected: boolean }) => void) =>
     ipcRenderer.on('connector:status', (_e, data) => cb(data)),
@@ -67,6 +70,9 @@ contextBridge.exposeInMainWorld('connector', {
 
   onRoomLeft: (cb: () => void) =>
     ipcRenderer.on('connector:room-left', () => cb()),
+
+  onPing: (cb: (rtt: number) => void) =>
+    ipcRenderer.on('connector:ping', (_e, rtt) => cb(rtt)),
 
   onError: (cb: (error: string) => void) =>
     ipcRenderer.on('connector:error', (_e, error) => cb(error)),

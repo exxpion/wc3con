@@ -35,6 +35,7 @@ export interface WSClientOptions {
     }>) => void;
     onRoomUpdate?: (action: string, userId: number, username: string) => void;
     onRelayState?: (state: 'paused' | 'resumed', payload: any) => void;
+    onPingResult?: (rtt: number) => void;
     onTunnel: (msg: TunnelMessage) => void;
     onError: (error: string) => void;
 }
@@ -52,6 +53,7 @@ export declare class WSRelayClient {
     private tunnelQueue;
     private queuedTunnelBytes;
     private reportedUnknownTypes;
+    private pingTimestamp;
     constructor(options: WSClientOptions);
     connect(): void;
     disconnect(): void;
@@ -63,6 +65,7 @@ export declare class WSRelayClient {
     sendGameInfoLost(): void;
     sendGameEnded(): void;
     sendChatMessage(text: string): void;
+    sendPing(): void;
     sendTunnel(msg: TunnelMessage): void;
     isConnected(): boolean;
     private buildBinaryFrame;
