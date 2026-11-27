@@ -73,20 +73,18 @@
     .auth-tab.active { background: var(--gold); border-color: var(--gold); color: #0c0c0c; font-weight: 600; }
 
     input {
-      display: block; padding: 10px 12px;
+      box-sizing: border-box;
+      padding: 10px 12px;
       background: var(--bg3); border: 1px solid var(--border);
       border-radius: 6px; color: var(--text); font-size: 14px;
       margin-bottom: 10px; outline: none; transition: border-color 0.2s;
     }
     input:focus { border-color: var(--gold); }
     input[readonly] { cursor: pointer; }
-    /* full-width standalone inputs */
-    .auth-box input { width: 100%; }
-    /* flex row inputs */
-    .create-row input, .modal-row input {
-      flex: 1 1 0px; min-width: 0; margin-bottom: 0;
-    }
-    .create-row input.map-name { flex: 2 1 0px; }
+    .auth-box input, .modal-body input { display: block; width: 100%; }
+    .create-row input, .modal-row input { margin-bottom: 0; min-width: 0; flex-shrink: 1; }
+    #roomName { flex: 1; }
+    #mapName  { flex: 2; }
 
     .link-btn {
       background: none; border: none; padding: 0;
@@ -294,7 +292,7 @@
     <h3>Создать игру</h3>
     <div class="create-row">
       <input type="text" id="roomName" placeholder="Название" />
-      <input type="text" id="mapName" class="map-name" placeholder="Выберите карту .w3x / .w3m" readonly />
+      <input type="text" id="mapName" placeholder="Выберите карту .w3x / .w3m" readonly />
       <button class="btn-sm btn-primary" onclick="selectMapPath()">Карта</button>
       <button class="btn-sm btn-success" onclick="doCreateRoom()">Создать</button>
     </div>  </div>
